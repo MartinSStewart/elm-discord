@@ -1352,7 +1352,7 @@ type alias Emoji =
     , name : Maybe String
     , roles : List (Id RoleId)
     , user : OptionalData User
-    , requireColors : OptionalData Bool
+    , requireColons : OptionalData Bool
     , managed : OptionalData Bool
     , animated : OptionalData Bool
     , available : OptionalData Bool
@@ -1859,13 +1859,13 @@ decodeUser =
         |> JD.andMap (JD.field "avatar" (JD.nullable decodeHash))
         |> JD.andMap (decodeOptionalData "bot" JD.bool)
         |> JD.andMap (decodeOptionalData "system" JD.bool)
-        |> JD.andMap (decodeOptionalData "mfaEnabled" JD.bool)
+        |> JD.andMap (decodeOptionalData "mfa_enabled" JD.bool)
         |> JD.andMap (decodeOptionalData "locale" JD.string)
         |> JD.andMap (decodeOptionalData "verified" JD.bool)
         |> JD.andMap (decodeOptionalData "email" (JD.nullable JD.string))
         |> JD.andMap (decodeOptionalData "flags" JD.int)
-        |> JD.andMap (decodeOptionalData "premiumType" JD.int)
-        |> JD.andMap (decodeOptionalData "publicFlags" JD.int)
+        |> JD.andMap (decodeOptionalData "premium_type" JD.int)
+        |> JD.andMap (decodeOptionalData "public_flags" JD.int)
 
 
 decodeUsername : JD.Decoder Username
@@ -1903,7 +1903,7 @@ decodeAttachment =
         |> JD.andMap (JD.field "filename" JD.string)
         |> JD.andMap (JD.field "size" JD.int)
         |> JD.andMap (JD.field "url" JD.string)
-        |> JD.andMap (JD.field "proxyUrl" JD.string)
+        |> JD.andMap (JD.field "proxy_url" JD.string)
         |> JD.andMap (JD.field "height" (JD.nullable JD.int))
         |> JD.andMap (JD.field "width" (JD.nullable JD.int))
 
@@ -1923,7 +1923,7 @@ decodeEmoji =
         |> JD.andMap (JD.field "name" (JD.nullable JD.string))
         |> JD.andMap (JD.field "roles" (JD.list decodeSnowflake))
         |> JD.andMap (decodeOptionalData "user" decodeUser)
-        |> JD.andMap (decodeOptionalData "requireColors" JD.bool)
+        |> JD.andMap (decodeOptionalData "require_colons" JD.bool)
         |> JD.andMap (decodeOptionalData "managed" JD.bool)
         |> JD.andMap (decodeOptionalData "animated" JD.bool)
         |> JD.andMap (decodeOptionalData "available" JD.bool)
