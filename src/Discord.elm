@@ -7,7 +7,7 @@ module Discord exposing
     , username, nickname, Username, Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, UserId, Permissions
     , WebhookId
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OptionalData(..), Roles(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OptionalData(..), Roles(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
     )
 
 {-| Useful Discord links:
@@ -82,6 +82,7 @@ import Quantity exposing (Quantity(..), Rate)
 import Set exposing (Set)
 import Task exposing (Task)
 import Time exposing (Posix(..))
+import UInt64 exposing (UInt64)
 import Url exposing (Url)
 import Url.Builder exposing (QueryParameter)
 
@@ -93,8 +94,8 @@ import Url.Builder exposing (QueryParameter)
 {-| Get a channel by ID.
 -}
 getChannel : Authentication -> Id ChannelId -> Task String Channel
-getChannel authentication (Id channelId) =
-    httpGet authentication decodeChannel [ "channels", channelId ] []
+getChannel authentication channelId =
+    httpGet authentication decodeChannel [ "channels", rawIdAsString channelId ] []
 
 
 
@@ -115,8 +116,8 @@ For Public servers, the set Rules or Guidelines channel and the Moderators-only 
 
 -}
 deleteChannel : Authentication -> Id ChannelId -> Task String Channel
-deleteChannel authentication (Id channelId) =
-    httpDelete authentication decodeChannel [ "channels", channelId ] [] (JE.string "")
+deleteChannel authentication channelId =
+    httpDelete authentication decodeChannel [ "channels", rawIdAsString channelId ] [] (JE.string "")
 
 
 {-| Returns the messages for a channel.
@@ -134,17 +135,17 @@ getMessages authentication { channelId, limit, relativeTo } =
     httpGet
         authentication
         (JD.list decodeMessage)
-        [ "channels", rawId channelId, "messages" ]
+        [ "channels", rawIdAsString channelId, "messages" ]
         (Url.Builder.int "limit" limit
             :: (case relativeTo of
-                    Around (Id messageId) ->
-                        [ Url.Builder.string "around" messageId ]
+                    Around messageId ->
+                        [ Url.Builder.string "around" (rawIdAsString messageId) ]
 
-                    Before (Id messageId) ->
-                        [ Url.Builder.string "before" messageId ]
+                    Before messageId ->
+                        [ Url.Builder.string "before" (rawIdAsString messageId) ]
 
-                    After (Id messageId) ->
-                        [ Url.Builder.string "after" messageId ]
+                    After messageId ->
+                        [ Url.Builder.string "after" (rawIdAsString messageId) ]
 
                     MostRecent ->
                         []
@@ -160,7 +161,7 @@ getMessage authentication { channelId, messageId } =
     httpGet
         authentication
         (JD.list decodeMessage)
-        [ "channels", rawId channelId, "messages", rawId messageId ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId ]
         []
 
 
@@ -183,7 +184,7 @@ createMessage authentication { channelId, content } =
     httpPost
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages" ]
+        [ "channels", rawIdAsString channelId, "messages" ]
         []
         (JE.object [ ( "content", JE.string content ) ])
 
@@ -197,7 +198,7 @@ createReaction authentication { channelId, messageId, emoji } =
     httpPut
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId, "reactions", emoji, "@me" ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId, "reactions", emoji, "@me" ]
         []
         (JE.object [])
 
@@ -209,7 +210,7 @@ deleteOwnReaction authentication { channelId, messageId, emoji } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId, "reactions", emoji, "@me" ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId, "reactions", emoji, "@me" ]
         []
         (JE.object [])
 
@@ -225,7 +226,7 @@ deleteUserReaction authentication { channelId, messageId, emoji, userId } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId, "reactions", emoji, rawId userId ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId, "reactions", emoji, rawIdAsString userId ]
         []
         (JE.object [])
 
@@ -237,7 +238,7 @@ getReactions authentication { channelId, messageId, emoji } =
     httpGet
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId, "reactions", emoji ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId, "reactions", emoji ]
         [ Url.Builder.int "limit" 100 ]
 
 
@@ -249,7 +250,7 @@ deleteAllReactions authentication { channelId, messageId } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId, "reactions" ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId, "reactions" ]
         []
         (JE.object [])
 
@@ -265,7 +266,7 @@ deleteAllReactionsForEmoji authentication { channelId, messageId, emoji } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId, "reactions", emoji ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId, "reactions", emoji ]
         []
         (JE.object [])
 
@@ -278,7 +279,7 @@ editMessage authentication { channelId, messageId, content } =
     httpPatch
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId ]
         [ Url.Builder.string "content" content ]
         (JE.object [])
 
@@ -291,7 +292,7 @@ deleteMessage authentication { channelId, messageId } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", rawId messageId ]
+        [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId ]
         []
         (JE.object [])
 
@@ -316,9 +317,9 @@ bulkDeleteMessage authentication { channelId, firstMessage, secondMessage, restO
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "messages", "bulk-delete" ]
+        [ "channels", rawIdAsString channelId, "messages", "bulk-delete" ]
         []
-        (JE.list JE.string (rawId firstMessage :: rawId secondMessage :: List.map rawId restOfMessages))
+        (JE.list JE.string (rawIdAsString firstMessage :: rawIdAsString secondMessage :: List.map rawIdAsString restOfMessages))
 
 
 
@@ -333,7 +334,7 @@ getChannelInvites authentication channelId =
     httpGet
         authentication
         (JD.list decodeInviteWithMetadata)
-        [ "channels", rawId channelId, "invites" ]
+        [ "channels", rawIdAsString channelId, "invites" ]
         []
 
 
@@ -361,7 +362,7 @@ createChannelInvite authentication channelId { maxAge, maxUses, temporaryMembers
     httpPost
         authentication
         decodeInvite
-        [ "channels", rawId channelId, "invites" ]
+        [ "channels", rawIdAsString channelId, "invites" ]
         []
         (JE.object
             (( "max_age"
@@ -383,8 +384,8 @@ createChannelInvite authentication channelId { maxAge, maxUses, temporaryMembers
                 :: ( "temporary", JE.bool temporaryMembership )
                 :: ( "unique", JE.bool unique )
                 :: (case targetUser of
-                        Just (Id targetUserId) ->
-                            [ ( "target_user", JE.string targetUserId ) ]
+                        Just targetUserId ->
+                            [ ( "target_user", JE.string (rawIdAsString targetUserId) ) ]
 
                         Nothing ->
                             []
@@ -405,7 +406,7 @@ deleteChannelPermission authentication { channelId, overwriteId } =
     httpDelete
         authentication
         (JD.list decodeInviteWithMetadata)
-        [ "channels", rawId channelId, "permissions", rawId overwriteId ]
+        [ "channels", rawIdAsString channelId, "permissions", rawIdAsString overwriteId ]
         []
         (JE.object [])
 
@@ -419,7 +420,7 @@ triggerTypingIndicator authentication channelId =
     httpPost
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "typing" ]
+        [ "channels", rawIdAsString channelId, "typing" ]
         []
         (JE.object [])
 
@@ -431,7 +432,7 @@ getPinnedMessages authentication channelId =
     httpGet
         authentication
         (JD.list decodeMessage)
-        [ "channels", rawId channelId, "pins" ]
+        [ "channels", rawIdAsString channelId, "pins" ]
         []
 
 
@@ -445,7 +446,7 @@ addPinnedChannelMessage authentication { channelId, messageId } =
     httpPut
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "pins", rawId messageId ]
+        [ "channels", rawIdAsString channelId, "pins", rawIdAsString messageId ]
         []
         (JE.object [])
 
@@ -457,7 +458,7 @@ deletePinnedChannelMessage authentication { channelId, messageId } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", rawId channelId, "pins", rawId messageId ]
+        [ "channels", rawIdAsString channelId, "pins", rawIdAsString messageId ]
         []
         (JE.object [])
 
@@ -476,7 +477,7 @@ listGuildEmojis authentication guildId =
     httpGet
         authentication
         (JD.list decodeEmoji)
-        [ "guilds", rawId guildId, "emojis" ]
+        [ "guilds", rawIdAsString guildId, "emojis" ]
         []
 
 
@@ -487,7 +488,7 @@ getGuildEmojis authentication { guildId, emojiId } =
     httpGet
         authentication
         decodeEmoji
-        [ "guilds", rawId guildId, "emojis", rawId emojiId ]
+        [ "guilds", rawIdAsString guildId, "emojis", rawIdAsString emojiId ]
         []
 
 
@@ -508,7 +509,7 @@ createGuildEmoji authentication { guildId, emojiName, image, roles } =
     httpPost
         authentication
         decodeEmoji
-        [ "guilds", rawId guildId, "emojis" ]
+        [ "guilds", rawIdAsString guildId, "emojis" ]
         []
         (JE.object
             [ ( "name", JE.string emojiName )
@@ -533,7 +534,7 @@ modifyGuildEmoji authentication { guildId, emojiId, emojiName, roles } =
     httpPost
         authentication
         decodeEmoji
-        [ "guilds", rawId guildId, "emojis" ]
+        [ "guilds", rawIdAsString guildId, "emojis" ]
         []
         (JE.object
             ((case emojiName of
@@ -561,7 +562,7 @@ deleteGuildEmoji authentication { guildId, emojiId } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "guilds", rawId guildId, "emojis", rawId emojiId ]
+        [ "guilds", rawIdAsString guildId, "emojis", rawIdAsString emojiId ]
         []
         (JE.object [])
 
@@ -577,7 +578,7 @@ getGuild authentication guildId =
     httpGet
         authentication
         decodeGuild
-        [ "guilds", rawId guildId ]
+        [ "guilds", rawIdAsString guildId ]
         []
 
 
@@ -591,7 +592,7 @@ getGuildPreview authentication guildId =
     httpGet
         authentication
         decodeGuildPreview
-        [ "guilds", rawId guildId, "preview" ]
+        [ "guilds", rawIdAsString guildId, "preview" ]
         []
 
 
@@ -640,7 +641,7 @@ modifyGuild authentication guildId modifications =
     httpPatch
         authentication
         decodeGuild
-        [ "guilds", rawId guildId ]
+        [ "guilds", rawIdAsString guildId ]
         []
         (JE.object
             (encodeModify "name" JE.string modifications.name
@@ -666,14 +667,14 @@ modifyGuild authentication guildId modifications =
 -}
 deleteGuild : Authentication -> Id GuildId -> Task String ()
 deleteGuild authentication guildId =
-    httpDelete authentication (JD.succeed ()) [ "guilds", rawId guildId ] [] (JE.object [])
+    httpDelete authentication (JD.succeed ()) [ "guilds", rawIdAsString guildId ] [] (JE.object [])
 
 
 {-| Returns a list of guild channels.
 -}
 getGuildChannel : Authentication -> Id GuildId -> Task String (List Channel)
 getGuildChannel authentication guildId =
-    httpGet authentication (JD.list decodeChannel) [ "guilds", rawId guildId, "channels" ] []
+    httpGet authentication (JD.list decodeChannel) [ "guilds", rawIdAsString guildId, "channels" ] []
 
 
 {-| Create a new text channel for the guild. Requires the `MANAGE_CHANNELS` permission.
@@ -683,7 +684,7 @@ createGuildTextChannel authentication config =
     httpPost
         authentication
         decodeChannel
-        [ "guilds", rawId config.guildId, "channels" ]
+        [ "guilds", rawIdAsString config.guildId, "channels" ]
         []
         (JE.object
             (( "name", JE.string config.name )
@@ -704,7 +705,7 @@ createGuildVoiceChannel authentication config =
     httpPost
         authentication
         decodeChannel
-        [ "guilds", rawId config.guildId, "channels" ]
+        [ "guilds", rawIdAsString config.guildId, "channels" ]
         []
         (JE.object
             (( "name", JE.string config.name )
@@ -727,7 +728,7 @@ createGuildCategoryChannel authentication config =
     httpPost
         authentication
         decodeChannel
-        [ "guilds", rawId config.guildId, "channels" ]
+        [ "guilds", rawIdAsString config.guildId, "channels" ]
         []
         (JE.object
             (( "name", JE.string config.name )
@@ -748,7 +749,7 @@ getGuildMember authentication guildId userId =
     httpGet
         authentication
         decodeGuildMember
-        [ "guilds", rawId guildId, "members", rawId userId ]
+        [ "guilds", rawIdAsString guildId, "members", rawIdAsString userId ]
         []
 
 
@@ -766,11 +767,11 @@ listGuildMembers authentication { guildId, limit, after } =
     httpGet
         authentication
         (JD.list decodeGuildMember)
-        [ "guilds", rawId guildId, "members" ]
+        [ "guilds", rawIdAsString guildId, "members" ]
         (Url.Builder.int "limit" limit
             :: (case after of
-                    Included (Id after_) ->
-                        [ Url.Builder.string "after" after_ ]
+                    Included after_ ->
+                        [ Url.Builder.string "after" (rawIdAsString after_) ]
 
                     Missing ->
                         []
@@ -831,6 +832,26 @@ username usernameText =
 usernameToString : Username -> String
 usernameToString (Username username_) =
     username_
+
+
+mentionUser : Id UserId -> String
+mentionUser id =
+    "<@!" ++ rawIdAsString id ++ ">"
+
+
+strikethrough : String -> String
+strikethrough text =
+    "~~" ++ text ++ "~~"
+
+
+code : String -> String
+code text =
+    "`" ++ text ++ "`"
+
+
+codeBlock : String -> String
+codeBlock text =
+    "```" ++ text ++ "```"
 
 
 nickname : String -> Result NameError Nickname
@@ -904,7 +925,7 @@ getCurrentUser authentication =
 -}
 getUser : Authentication -> Id UserId -> Task String User
 getUser authentication userId =
-    httpGet authentication decodeUser [ "users", rawId userId ] []
+    httpGet authentication decodeUser [ "users", rawIdAsString userId ] []
 
 
 {-| Modify the requester's user account settings.
@@ -948,7 +969,7 @@ leaveGuild authentication guildId =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "users", "@me", "guilds", rawId guildId ]
+        [ "users", "@me", "guilds", rawIdAsString guildId ]
         []
         (JE.object [])
 
@@ -972,7 +993,7 @@ customEmojiUrl : ImageCdnConfig (Choices Png Gif Never Never) -> Id EmojiId -> S
 customEmojiUrl { size, imageType } emojiId =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "emojis", rawId emojiId ++ imageExtensionPngGif imageType ]
+        [ "emojis", rawIdAsString emojiId ++ imageExtensionPngGif imageType ]
         (imageSizeQuery size)
 
 
@@ -980,7 +1001,7 @@ guildIconUrl : ImageCdnConfig (Choices Png Jpg WebP Gif) -> Id GuildId -> ImageH
 guildIconUrl { size, imageType } guildId iconHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "icons", rawId guildId, rawHash iconHash ++ imageExtensionPngJpgWebpGif imageType ]
+        [ "icons", rawIdAsString guildId, rawHash iconHash ++ imageExtensionPngJpgWebpGif imageType ]
         (imageSizeQuery size)
 
 
@@ -988,7 +1009,7 @@ guildSplashUrl : ImageCdnConfig (Choices Png Jpg WebP Never) -> Id GuildId -> Im
 guildSplashUrl { size, imageType } guildId splashHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "splashes", rawId guildId, rawHash splashHash ++ imageExtensionPngJpgWebp imageType ]
+        [ "splashes", rawIdAsString guildId, rawHash splashHash ++ imageExtensionPngJpgWebp imageType ]
         (imageSizeQuery size)
 
 
@@ -996,7 +1017,7 @@ guildDiscoverySplashUrl : ImageCdnConfig (Choices Png Jpg WebP Never) -> Id Guil
 guildDiscoverySplashUrl { size, imageType } guildId discoverySplashHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "discovery-splashes", rawId guildId, rawHash discoverySplashHash ++ imageExtensionPngJpgWebp imageType ]
+        [ "discovery-splashes", rawIdAsString guildId, rawHash discoverySplashHash ++ imageExtensionPngJpgWebp imageType ]
         (imageSizeQuery size)
 
 
@@ -1004,7 +1025,7 @@ guildBannerUrl : ImageCdnConfig (Choices Png Jpg WebP Never) -> Id GuildId -> Im
 guildBannerUrl { size, imageType } guildId splashHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "banners", rawId guildId, rawHash splashHash ++ imageExtensionPngJpgWebp imageType ]
+        [ "banners", rawIdAsString guildId, rawHash splashHash ++ imageExtensionPngJpgWebp imageType ]
         (imageSizeQuery size)
 
 
@@ -1012,7 +1033,7 @@ defaultUserAvatarUrl : ImageSize -> Id UserId -> UserDiscriminator -> String
 defaultUserAvatarUrl size guildId (UserDiscriminator discriminator) =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "embed", "avatars", rawId guildId, String.fromInt (modBy 5 discriminator) ++ ".png" ]
+        [ "embed", "avatars", rawIdAsString guildId, String.fromInt (modBy 5 discriminator) ++ ".png" ]
         (imageSizeQuery size)
 
 
@@ -1020,7 +1041,7 @@ userAvatarUrl : ImageCdnConfig (Choices Png Jpg WebP Gif) -> Id UserId -> ImageH
 userAvatarUrl { size, imageType } guildId avatarHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "avatars", rawId guildId, rawHash avatarHash ++ imageExtensionPngJpgWebpGif imageType ]
+        [ "avatars", rawIdAsString guildId, rawHash avatarHash ++ imageExtensionPngJpgWebpGif imageType ]
         (imageSizeQuery size)
 
 
@@ -1028,7 +1049,7 @@ applicationIconUrl : ImageCdnConfig (Choices Png Jpg WebP Never) -> Id Applicati
 applicationIconUrl { size, imageType } applicationId applicationIconHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "app-icons", rawId applicationId, rawHash applicationIconHash ++ imageExtensionPngJpgWebp imageType ]
+        [ "app-icons", rawIdAsString applicationId, rawHash applicationIconHash ++ imageExtensionPngJpgWebp imageType ]
         (imageSizeQuery size)
 
 
@@ -1036,7 +1057,7 @@ applicationAssetUrl : ImageCdnConfig (Choices Png Jpg WebP Never) -> Id Applicat
 applicationAssetUrl { size, imageType } applicationId applicationAssetHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "app-assets", rawId applicationId, rawHash applicationAssetHash ++ imageExtensionPngJpgWebp imageType ]
+        [ "app-assets", rawIdAsString applicationId, rawHash applicationAssetHash ++ imageExtensionPngJpgWebp imageType ]
         (imageSizeQuery size)
 
 
@@ -1045,9 +1066,9 @@ achievementIconUrl { size, imageType } applicationId achievementId achievementIc
     Url.Builder.crossOrigin
         discordCdnUrl
         [ "app-assets"
-        , rawId applicationId
+        , rawIdAsString applicationId
         , "achievements"
-        , rawId achievementId
+        , rawIdAsString achievementId
         , "icons"
         , rawHash achievementIconHash ++ imageExtensionPngJpgWebp imageType
         ]
@@ -1058,7 +1079,7 @@ teamIconUrl : ImageCdnConfig (Choices Png Jpg WebP Never) -> Id TeamId -> ImageH
 teamIconUrl { size, imageType } teamId teamIconHash =
     Url.Builder.crossOrigin
         discordCdnUrl
-        [ "team-icons", rawId teamId, rawHash teamIconHash ++ ".png" ]
+        [ "team-icons", rawIdAsString teamId, rawHash teamIconHash ++ ".png" ]
         (imageSizeQuery size)
 
 
@@ -1092,9 +1113,9 @@ bearerToken =
     BearerToken
 
 
-rawId : Id idType -> String
-rawId (Id id) =
-    id
+rawIdAsString : Id idType -> String
+rawIdAsString (Id id) =
+    UInt64.toString id
 
 
 rawHash : ImageHash hashType -> String
@@ -1572,7 +1593,7 @@ type ApplicationIconHash
 {-| In Discord's documentation these are called snowflakes. They are always 64bit positive integers.
 -}
 type Id idType
-    = Id String
+    = Id UInt64
 
 
 type MessageId
@@ -1814,12 +1835,9 @@ decodeOptionalData field decoder =
 decodeSnowflake : JD.Decoder (Id idType)
 decodeSnowflake =
     JD.andThen
-        (\text ->
-            if String.all Char.isDigit text then
-                Id text |> JD.succeed
-
-            else
-                JD.fail "Invalid snowflake ID."
+        (UInt64.fromString
+            >> Maybe.map (Id >> JD.succeed)
+            >> Maybe.withDefault (JD.fail "Invalid snowflake ID.")
         )
         JD.string
 
@@ -2186,8 +2204,8 @@ decodeGuildPreview =
 
 
 encodeId : Id idType -> JE.Value
-encodeId (Id id) =
-    JE.string id
+encodeId id =
+    JE.string (rawIdAsString id)
 
 
 encodeRoles : Roles -> JE.Value
