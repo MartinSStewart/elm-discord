@@ -1,5 +1,5 @@
 module Discord exposing
-    ( Authentication, botToken
+    ( Authentication, botToken, bearerToken
     , getChannel, deleteChannel, getMessages, getMessage, MessagesRelativeTo(..), createMessage, getReactions, createReaction, deleteOwnReaction, deleteUserReaction, deleteAllReactions, deleteAllReactionsForEmoji, deleteMessage, bulkDeleteMessage, Channel, PartialChannel, ChannelId, Message, MessageId, Reaction, Attachment, AttachmentId
     , Emoji, EmojiId
     , Guild, GuildId, GuildMember, RoleId, PartialGuild
@@ -23,7 +23,7 @@ For that reason it's probably a good idea to have a look at the source code and 
 
 # Authentication
 
-@docs Authentication, botToken
+@docs Authentication, botToken, bearerToken
 
 
 # Audit Log
@@ -1162,7 +1162,11 @@ http authentication requestType decoder path queryParameters body =
                         "Bearer " ++ token
                 )
             ]
-        , url = Url.Builder.crossOrigin discordApiUrl path queryParameters
+        , url =
+            Url.Builder.crossOrigin
+                discordApiUrl
+                (List.map Url.percentEncode path)
+                queryParameters
         , resolver = Http.stringResolver (resolver decoder)
         , body = body
         , timeout = Nothing
