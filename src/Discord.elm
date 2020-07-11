@@ -1926,8 +1926,27 @@ decodeAttachment =
         |> JD.andMap (JD.field "size" JD.int)
         |> JD.andMap (JD.field "url" JD.string)
         |> JD.andMap (JD.field "proxy_url" JD.string)
-        |> JD.andMap (JD.field "height" (JD.nullable JD.int))
-        |> JD.andMap (JD.field "width" (JD.nullable JD.int))
+        |> JD.andMap
+            {- Sometimes the width and height don't get included even though Discord's documentation says they should.
+               If that happens, we just pretend we did get that field and it contained a null value.
+            -}
+            (decodeOptionalData "height" (JD.nullable JD.int)
+                |> JD.map flattenMaybeOptional
+            )
+        |> JD.andMap
+            (decodeOptionalData "width" (JD.nullable JD.int)
+                |> JD.map flattenMaybeOptional
+            )
+
+
+flattenMaybeOptional : OptionalData (Maybe a) -> Maybe a
+flattenMaybeOptional optionalData =
+    case optionalData of
+        Included maybe ->
+            maybe
+
+        Missing ->
+            Nothing
 
 
 decodeReaction : JD.Decoder Reaction
