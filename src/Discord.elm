@@ -12,7 +12,7 @@ module Discord exposing
 
 {-| Useful Discord links:
 
-  - API documentation: <https://discordapp.com/developers/docs/intro>
+  - API documentation: <https://discord.com/developers/docs/intro>
     (A lot of their documentation has been reused here. Thanks Discord!)
   - Create bot invites: <https://discordapi.com/permissions.html>
 
@@ -396,7 +396,7 @@ createChannelInvite authentication channelId { maxAge, maxUses, temporaryMembers
 
 {-| Delete a channel permission overwrite for a user or role in a channel.
 Only usable for guild channels.
-Requires the `MANAGE_ROLES` permission. For more information about permissions, see [permissions](https://discordapp.com/developers/docs/topics/permissions#permissions).
+Requires the `MANAGE_ROLES` permission. For more information about permissions, see [permissions](https://discord.com/developers/docs/topics/permissions#permissions).
 -}
 deleteChannelPermission :
     Authentication
@@ -1089,16 +1089,16 @@ teamIconUrl { size, imageType } teamId teamIconHash =
 
 discordApiUrl : String
 discordApiUrl =
-    "https://discordapp.com/api/"
+    "https://discord.com/api"
 
 
 discordCdnUrl : String
 discordCdnUrl =
-    "https://cdn.discordapp.com/"
+    "https://cdn.discordapp.com"
 
 
 {-| Looks something like this `MTk4NjIyNDgzNDcxOTI1MjQ4.Cl2FMQ.ZnCjm1XVW7vRze4b7Cq4se7kKWs`.
-See the [Discord documentation](https://discordapp.com/developers/docs/reference#authentication) for more info.
+See the [Discord documentation](https://discord.com/developers/docs/reference#authentication) for more info.
 -}
 botToken : String -> Authentication
 botToken =
@@ -1106,7 +1106,7 @@ botToken =
 
 
 {-| Looks something like this `CZhtkLDpNYXgPH9Ml6shqh2OwykChw`.
-See the [Discord documentation](https://discordapp.com/developers/docs/reference#authentication) for more info.
+See the [Discord documentation](https://discord.com/developers/docs/reference#authentication) for more info.
 -}
 bearerToken : String -> Authentication
 bearerToken =
