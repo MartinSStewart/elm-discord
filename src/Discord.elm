@@ -1,5 +1,6 @@
 module Discord exposing
     ( Authentication, botToken, bearerToken
+    , HttpError(..), ErrorCode(..), RateLimit, httpErrorToString, errorCodeToString
     , getChannel, deleteChannel, getMessages, getMessage, MessagesRelativeTo(..), createMessage, getReactions, createReaction, deleteOwnReaction, deleteUserReaction, deleteAllReactions, deleteAllReactionsForEmoji, deleteMessage, bulkDeleteMessage, Channel, PartialChannel, ChannelId, Message, MessageId, Reaction, Attachment, AttachmentId
     , Emoji, EmojiId
     , Guild, GuildId, GuildMember, RoleId, PartialGuild
@@ -24,6 +25,11 @@ For that reason it's probably a good idea to have a look at the source code and 
 # Authentication
 
 @docs Authentication, botToken, bearerToken
+
+
+# Errors
+
+@docs HttpError, ErrorCode, RateLimit, httpErrorToString, errorCodeToString
 
 
 # Audit Log
@@ -71,7 +77,8 @@ These are functions that return a url pointing to a particular image.
 -}
 
 import Binary
-import Duration exposing (Seconds)
+import Dict exposing (Dict)
+import Duration exposing (Duration, Seconds)
 import Http
 import Iso8601
 import Json.Decode as JD
@@ -93,7 +100,7 @@ import Url.Builder exposing (QueryParameter)
 
 {-| Get a channel by ID.
 -}
-getChannel : Authentication -> Id ChannelId -> Task String Channel
+getChannel : Authentication -> Id ChannelId -> Task HttpError Channel
 getChannel authentication channelId =
     httpGet authentication decodeChannel [ "channels", rawIdAsString channelId ] []
 
@@ -115,7 +122,7 @@ In contrast, when used with a private message, it is possible to undo the action
 For Public servers, the set Rules or Guidelines channel and the Moderators-only (Public Server Updates) channel cannot be deleted.
 
 -}
-deleteChannel : Authentication -> Id ChannelId -> Task String Channel
+deleteChannel : Authentication -> Id ChannelId -> Task HttpError Channel
 deleteChannel authentication channelId =
     httpDelete authentication decodeChannel [ "channels", rawIdAsString channelId ] [] (JE.string "")
 
@@ -130,7 +137,7 @@ If the current user is missing the `READ_MESSAGE_HISTORY` permission in the chan
     Or should we get the most recent messages?
 
 -}
-getMessages : Authentication -> { channelId : Id ChannelId, limit : Int, relativeTo : MessagesRelativeTo } -> Task String (List Message)
+getMessages : Authentication -> { channelId : Id ChannelId, limit : Int, relativeTo : MessagesRelativeTo } -> Task HttpError (List Message)
 getMessages authentication { channelId, limit, relativeTo } =
     httpGet
         authentication
@@ -156,7 +163,7 @@ getMessages authentication { channelId, limit, relativeTo } =
 {-| Returns a specific message in the channel.
 If operating on a guild channel, this endpoint requires the `READ_MESSAGE_HISTORY` permission to be present on the current user.
 -}
-getMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task String (List Message)
+getMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError (List Message)
 getMessage authentication { channelId, messageId } =
     httpGet
         authentication
@@ -179,7 +186,7 @@ See message formatting for more information on how to properly format messages.
 The maximum request size when sending a message is 8MB.
 
 -}
-createMessage : Authentication -> { channelId : Id ChannelId, content : String } -> Task String ()
+createMessage : Authentication -> { channelId : Id ChannelId, content : String } -> Task HttpError ()
 createMessage authentication { channelId, content } =
     httpPost
         authentication
@@ -193,7 +200,7 @@ createMessage authentication { channelId, content } =
 This endpoint requires the `READ_MESSAGE_HISTORY` permission to be present on the current user.
 Additionally, if nobody else has reacted to the message using this emoji, this endpoint requires the `ADD_REACTIONS` permission to be present on the current user.
 -}
-createReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task String ()
+createReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task HttpError ()
 createReaction authentication { channelId, messageId, emoji } =
     httpPut
         authentication
@@ -205,7 +212,7 @@ createReaction authentication { channelId, messageId, emoji } =
 
 {-| Delete a reaction the current user has made for the message.
 -}
-deleteOwnReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task String ()
+deleteOwnReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task HttpError ()
 deleteOwnReaction authentication { channelId, messageId, emoji } =
     httpDelete
         authentication
@@ -221,7 +228,7 @@ This endpoint requires the `MANAGE_MESSAGES` permission to be present on the cur
 deleteUserReaction :
     Authentication
     -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String, userId : Id UserId }
-    -> Task String ()
+    -> Task HttpError ()
 deleteUserReaction authentication { channelId, messageId, emoji, userId } =
     httpDelete
         authentication
@@ -233,7 +240,7 @@ deleteUserReaction authentication { channelId, messageId, emoji, userId } =
 
 {-| Get a list of users that reacted with this emoji.
 -}
-getReactions : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task String ()
+getReactions : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task HttpError ()
 getReactions authentication { channelId, messageId, emoji } =
     httpGet
         authentication
@@ -245,7 +252,7 @@ getReactions authentication { channelId, messageId, emoji } =
 {-| Deletes all reactions on a message.
 This endpoint requires the `MANAGE_MESSAGES` permission to be present on the current user.
 -}
-deleteAllReactions : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task String ()
+deleteAllReactions : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError ()
 deleteAllReactions authentication { channelId, messageId } =
     httpDelete
         authentication
@@ -261,7 +268,7 @@ This endpoint requires the `MANAGE_MESSAGES` permission to be present on the cur
 deleteAllReactionsForEmoji :
     Authentication
     -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String }
-    -> Task String ()
+    -> Task HttpError ()
 deleteAllReactionsForEmoji authentication { channelId, messageId, emoji } =
     httpDelete
         authentication
@@ -274,7 +281,7 @@ deleteAllReactionsForEmoji authentication { channelId, messageId, emoji } =
 {-| Edit a previously sent message. The fields content can only be edited by the original message author.
 The content field can have a maximum of 2000 characters.
 -}
-editMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, content : String } -> Task String ()
+editMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, content : String } -> Task HttpError ()
 editMessage authentication { channelId, messageId, content } =
     httpPatch
         authentication
@@ -287,7 +294,7 @@ editMessage authentication { channelId, messageId, content } =
 {-| Delete a message.
 If operating on a guild channel and trying to delete a message that was not sent by the current user, this endpoint requires the `MANAGE_MESSAGES` permission.
 -}
-deleteMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task String ()
+deleteMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError ()
 deleteMessage authentication { channelId, messageId } =
     httpDelete
         authentication
@@ -312,7 +319,7 @@ bulkDeleteMessage :
         , secondMessage : Id MessageId
         , restOfMessages : List (Id MessageId)
         }
-    -> Task String ()
+    -> Task HttpError ()
 bulkDeleteMessage authentication { channelId, firstMessage, secondMessage, restOfMessages } =
     httpDelete
         authentication
@@ -329,7 +336,7 @@ bulkDeleteMessage authentication { channelId, firstMessage, secondMessage, restO
 {-| Returns a list of invites for the channel.
 Only usable for guild channels. Requires the `MANAGE_CHANNELS` permission.
 -}
-getChannelInvites : Authentication -> Id ChannelId -> Task String (List InviteWithMetadata)
+getChannelInvites : Authentication -> Id ChannelId -> Task HttpError (List InviteWithMetadata)
 getChannelInvites authentication channelId =
     httpGet
         authentication
@@ -357,7 +364,7 @@ createChannelInvite :
     Authentication
     -> Id ChannelId
     -> ChannelInviteConfig
-    -> Task String Invite
+    -> Task HttpError Invite
 createChannelInvite authentication channelId { maxAge, maxUses, temporaryMembership, unique, targetUser } =
     httpPost
         authentication
@@ -401,7 +408,7 @@ Requires the `MANAGE_ROLES` permission. For more information about permissions, 
 deleteChannelPermission :
     Authentication
     -> { channelId : Id ChannelId, overwriteId : Id OverwriteId }
-    -> Task String (List InviteWithMetadata)
+    -> Task HttpError (List InviteWithMetadata)
 deleteChannelPermission authentication { channelId, overwriteId } =
     httpDelete
         authentication
@@ -415,7 +422,7 @@ deleteChannelPermission authentication { channelId, overwriteId } =
 Generally bots should not implement this route.
 However, if a bot is responding to a command and expects the computation to take a few seconds, this endpoint may be called to let the user know that the bot is processing their message.
 -}
-triggerTypingIndicator : Authentication -> Id ChannelId -> Task String ()
+triggerTypingIndicator : Authentication -> Id ChannelId -> Task HttpError ()
 triggerTypingIndicator authentication channelId =
     httpPost
         authentication
@@ -427,7 +434,7 @@ triggerTypingIndicator authentication channelId =
 
 {-| Returns all pinned messages in the channel.
 -}
-getPinnedMessages : Authentication -> Id ChannelId -> Task String (List Message)
+getPinnedMessages : Authentication -> Id ChannelId -> Task HttpError (List Message)
 getPinnedMessages authentication channelId =
     httpGet
         authentication
@@ -441,7 +448,7 @@ getPinnedMessages authentication channelId =
 The max pinned messages is 50.
 
 -}
-addPinnedChannelMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task String ()
+addPinnedChannelMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError ()
 addPinnedChannelMessage authentication { channelId, messageId } =
     httpPut
         authentication
@@ -453,7 +460,7 @@ addPinnedChannelMessage authentication { channelId, messageId } =
 
 {-| Delete a pinned message in a channel. Requires the `MANAGE_MESSAGES` permission.
 -}
-deletePinnedChannelMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task String ()
+deletePinnedChannelMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError ()
 deletePinnedChannelMessage authentication { channelId, messageId } =
     httpDelete
         authentication
@@ -472,7 +479,7 @@ deletePinnedChannelMessage authentication { channelId, messageId } =
 
 {-| Returns a list of emojis for the given guild.
 -}
-listGuildEmojis : Authentication -> Id GuildId -> Task String (List Emoji)
+listGuildEmojis : Authentication -> Id GuildId -> Task HttpError (List Emoji)
 listGuildEmojis authentication guildId =
     httpGet
         authentication
@@ -483,7 +490,7 @@ listGuildEmojis authentication guildId =
 
 {-| Returns an emoji for the given guild and emoji IDs.
 -}
-getGuildEmojis : Authentication -> { guildId : Id GuildId, emojiId : Id EmojiId } -> Task String Emoji
+getGuildEmojis : Authentication -> { guildId : Id GuildId, emojiId : Id EmojiId } -> Task HttpError Emoji
 getGuildEmojis authentication { guildId, emojiId } =
     httpGet
         authentication
@@ -504,7 +511,7 @@ Emojis and animated emojis have a maximum file size of 256kb.
 createGuildEmoji :
     Authentication
     -> { guildId : Id GuildId, emojiName : String, image : DataUri, roles : Roles }
-    -> Task String Emoji
+    -> Task HttpError Emoji
 createGuildEmoji authentication { guildId, emojiName, image, roles } =
     httpPost
         authentication
@@ -529,7 +536,7 @@ modifyGuildEmoji :
         , emojiName : Modify String
         , roles : Modify Roles
         }
-    -> Task String Emoji
+    -> Task HttpError Emoji
 modifyGuildEmoji authentication { guildId, emojiId, emojiName, roles } =
     httpPost
         authentication
@@ -557,7 +564,7 @@ modifyGuildEmoji authentication { guildId, emojiId, emojiName, roles } =
 
 {-| Delete the given emoji. Requires the `MANAGE_EMOJIS` permission.
 -}
-deleteGuildEmoji : Authentication -> { guildId : Id GuildId, emojiId : Id EmojiId } -> Task String ()
+deleteGuildEmoji : Authentication -> { guildId : Id GuildId, emojiId : Id EmojiId } -> Task HttpError ()
 deleteGuildEmoji authentication { guildId, emojiId } =
     httpDelete
         authentication
@@ -573,7 +580,7 @@ deleteGuildEmoji authentication { guildId, emojiId } =
 
 {-| Returns the guild for the given id.
 -}
-getGuild : Authentication -> Id GuildId -> Task String Guild
+getGuild : Authentication -> Id GuildId -> Task HttpError Guild
 getGuild authentication guildId =
     httpGet
         authentication
@@ -587,7 +594,7 @@ getGuild authentication guildId =
 This endpoint is only for Public guilds
 
 -}
-getGuildPreview : Authentication -> Id GuildId -> Task String GuildPreview
+getGuildPreview : Authentication -> Id GuildId -> Task HttpError GuildPreview
 getGuildPreview authentication guildId =
     httpGet
         authentication
@@ -636,7 +643,7 @@ modifyGuild :
     Authentication
     -> Id GuildId
     -> GuildModifications
-    -> Task String Guild
+    -> Task HttpError Guild
 modifyGuild authentication guildId modifications =
     httpPatch
         authentication
@@ -665,21 +672,21 @@ modifyGuild authentication guildId modifications =
 
 {-| Delete a guild permanently. User must be owner.
 -}
-deleteGuild : Authentication -> Id GuildId -> Task String ()
+deleteGuild : Authentication -> Id GuildId -> Task HttpError ()
 deleteGuild authentication guildId =
     httpDelete authentication (JD.succeed ()) [ "guilds", rawIdAsString guildId ] [] (JE.object [])
 
 
 {-| Returns a list of guild channels.
 -}
-getGuildChannel : Authentication -> Id GuildId -> Task String (List Channel)
+getGuildChannel : Authentication -> Id GuildId -> Task HttpError (List Channel)
 getGuildChannel authentication guildId =
     httpGet authentication (JD.list decodeChannel) [ "guilds", rawIdAsString guildId, "channels" ] []
 
 
 {-| Create a new text channel for the guild. Requires the `MANAGE_CHANNELS` permission.
 -}
-createGuildTextChannel : Authentication -> CreateGuildTextChannel -> Task String Channel
+createGuildTextChannel : Authentication -> CreateGuildTextChannel -> Task HttpError Channel
 createGuildTextChannel authentication config =
     httpPost
         authentication
@@ -700,7 +707,7 @@ createGuildTextChannel authentication config =
 
 {-| Create a new voice channel for the guild. Requires the `MANAGE_CHANNELS` permission.
 -}
-createGuildVoiceChannel : Authentication -> CreateGuildVoiceChannel -> Task String Channel
+createGuildVoiceChannel : Authentication -> CreateGuildVoiceChannel -> Task HttpError Channel
 createGuildVoiceChannel authentication config =
     httpPost
         authentication
@@ -723,7 +730,7 @@ createGuildVoiceChannel authentication config =
 {-| Create a new category for the guild that you can place other channels in.
 Requires the `MANAGE_CHANNELS` permission.
 -}
-createGuildCategoryChannel : Authentication -> CreateGuildCategoryChannel -> Task String Channel
+createGuildCategoryChannel : Authentication -> CreateGuildCategoryChannel -> Task HttpError Channel
 createGuildCategoryChannel authentication config =
     httpPost
         authentication
@@ -744,7 +751,7 @@ createGuildCategoryChannel authentication config =
 
 {-| Returns a guild member for the specified user.
 -}
-getGuildMember : Authentication -> Id GuildId -> Id UserId -> Task String GuildMember
+getGuildMember : Authentication -> Id GuildId -> Id UserId -> Task HttpError GuildMember
 getGuildMember authentication guildId userId =
     httpGet
         authentication
@@ -762,7 +769,7 @@ getGuildMember authentication guildId userId =
 listGuildMembers :
     Authentication
     -> { guildId : Id GuildId, limit : Int, after : OptionalData (Id UserId) }
-    -> Task String (List GuildMember)
+    -> Task HttpError (List GuildMember)
 listGuildMembers authentication { guildId, limit, after } =
     httpGet
         authentication
@@ -785,7 +792,7 @@ listGuildMembers authentication { guildId, limit, after } =
 
 {-| Returns an invite for the given code.
 -}
-getInvite : Authentication -> InviteCode -> Task String Invite
+getInvite : Authentication -> InviteCode -> Task HttpError Invite
 getInvite authentication (InviteCode inviteCode) =
     httpGet
         authentication
@@ -797,7 +804,7 @@ getInvite authentication (InviteCode inviteCode) =
 {-| Delete an invite.
 Requires the `MANAGE_CHANNELS` permission on the channel this invite belongs to, or `MANAGE_GUILD` to remove any invite across the guild.
 -}
-deleteInvite : Authentication -> InviteCode -> Task String Invite
+deleteInvite : Authentication -> InviteCode -> Task HttpError Invite
 deleteInvite authentication (InviteCode inviteCode) =
     httpDelete
         authentication
@@ -862,12 +869,6 @@ nickname nicknameText =
     else if String.length nicknameText > 32 then
         Err NameTooLong
 
-    else if List.any (\substring -> String.contains substring nicknameText) invalidNameSubstrings then
-        Err NameContainsInvalidSubstring
-
-    else if String.any (\char -> Set.member char invalidNameCharacters) nicknameText then
-        Err NameContainsInvalidCharacters
-
     else
         String.trim nicknameText |> Nickname |> Ok
 
@@ -912,7 +913,7 @@ nicknameErrorToString nicknameError =
 {-| Returns the user object of the requester's account.
 For OAuth2, this requires the identify scope, which will return the object without an email, and optionally the email scope, which returns the object with an email.
 -}
-getCurrentUser : Authentication -> Task String User
+getCurrentUser : Authentication -> Task HttpError User
 getCurrentUser authentication =
     httpGet
         authentication
@@ -923,7 +924,7 @@ getCurrentUser authentication =
 
 {-| Returns a user object for a given user ID.
 -}
-getUser : Authentication -> Id UserId -> Task String User
+getUser : Authentication -> Id UserId -> Task HttpError User
 getUser authentication userId =
     httpGet authentication decodeUser [ "users", rawIdAsString userId ] []
 
@@ -937,7 +938,7 @@ getUser authentication userId =
 modifyCurrentUser :
     Authentication
     -> { username : Modify Username, avatar : Modify (Maybe DataUri) }
-    -> Task String User
+    -> Task HttpError User
 modifyCurrentUser authentication modifications =
     httpPatch
         authentication
@@ -953,7 +954,7 @@ modifyCurrentUser authentication modifications =
 
 {-| Returns a list of partial guilds the current user is a member of. Requires the guilds OAuth2 scope.
 -}
-getCurrentUserGuilds : Authentication -> Task String (List PartialGuild)
+getCurrentUserGuilds : Authentication -> Task HttpError (List PartialGuild)
 getCurrentUserGuilds authentication =
     httpGet
         authentication
@@ -964,7 +965,7 @@ getCurrentUserGuilds authentication =
 
 {-| Leave a guild.
 -}
-leaveGuild : Authentication -> Id GuildId -> Task String ()
+leaveGuild : Authentication -> Id GuildId -> Task HttpError ()
 leaveGuild authentication guildId =
     httpDelete
         authentication
@@ -1123,32 +1124,32 @@ rawHash (ImageHash hash) =
     hash
 
 
-httpPost : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task String a
+httpPost : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task HttpError a
 httpPost authentication decoder path queryParameters body =
     http authentication "POST" decoder path queryParameters (Http.jsonBody body)
 
 
-httpPut : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task String a
+httpPut : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task HttpError a
 httpPut authentication decoder path queryParameters body =
     http authentication "PUT" decoder path queryParameters (Http.jsonBody body)
 
 
-httpPatch : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task String a
+httpPatch : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task HttpError a
 httpPatch authentication decoder path queryParameters body =
     http authentication "DELETE" decoder path queryParameters (Http.jsonBody body)
 
 
-httpDelete : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task String a
+httpDelete : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task HttpError a
 httpDelete authentication decoder path queryParameters body =
     http authentication "DELETE" decoder path queryParameters (Http.jsonBody body)
 
 
-httpGet : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> Task String a
+httpGet : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> Task HttpError a
 httpGet authentication decoder path queryParameters =
     http authentication "GET" decoder path queryParameters Http.emptyBody
 
 
-http : Authentication -> String -> JD.Decoder a -> List String -> List QueryParameter -> Http.Body -> Task String a
+http : Authentication -> String -> JD.Decoder a -> List String -> List QueryParameter -> Http.Body -> Task HttpError a
 http authentication requestType decoder path queryParameters body =
     Http.task
         { method = requestType
@@ -1173,20 +1174,68 @@ http authentication requestType decoder path queryParameters body =
         }
 
 
-resolver : JD.Decoder a -> Http.Response String -> Result String a
+resolver : JD.Decoder a -> Http.Response String -> Result HttpError a
 resolver decoder response =
     case response of
         Http.BadUrl_ badUrl ->
-            Err ("Bad url " ++ badUrl)
+            "Bad url " ++ badUrl |> UnexpectedError |> Err
 
         Http.Timeout_ ->
-            Err "Timeout"
+            Err Timeout
 
         Http.NetworkError_ ->
-            Err "Network error"
+            Err NetworkError
 
         Http.BadStatus_ metadata body ->
-            "Bad status " ++ String.fromInt metadata.statusCode ++ "      " ++ body |> Err
+            let
+                decodeErrorCode_ wrapper =
+                    case JD.decodeString decodeErrorCode body of
+                        Ok errorCode ->
+                            wrapper errorCode
+
+                        Err error ->
+                            "Error decoding error code json: "
+                                ++ JD.errorToString error
+                                |> UnexpectedError
+            in
+            (case metadata.statusCode of
+                304 ->
+                    decodeErrorCode_ NotModified304
+
+                --400 ->
+                --    BadRequest400 errorData
+                401 ->
+                    decodeErrorCode_ Unauthorized401
+
+                403 ->
+                    decodeErrorCode_ Forbidden403
+
+                404 ->
+                    decodeErrorCode_ NotFound404
+
+                --405 ->
+                --    MethodNotAllowed405 errorData
+                429 ->
+                    case JD.decodeString decodeRateLimit body of
+                        Ok rateLimit ->
+                            TooManyRequests429 rateLimit
+
+                        Err error ->
+                            ("Error decoding rate limit json: " ++ JD.errorToString error)
+                                |> UnexpectedError
+
+                502 ->
+                    decodeErrorCode_ GatewayUnavailable502
+
+                statusCode ->
+                    if statusCode >= 500 && statusCode < 600 then
+                        decodeErrorCode_
+                            (\errorCode -> ServerError5xx { statusCode = metadata.statusCode, errorCode = errorCode })
+
+                    else
+                        "Unexpected status code " ++ String.fromInt statusCode ++ ". Body: " ++ body |> UnexpectedError
+            )
+                |> Err
 
         Http.GoodStatus_ _ body ->
             case JD.decodeString decoder body of
@@ -1194,7 +1243,7 @@ resolver decoder response =
                     Ok data
 
                 Err error ->
-                    JD.errorToString error |> Err
+                    "Error decoding good status json: " ++ JD.errorToString error |> UnexpectedError |> Err
 
 
 rawDataUri : DataUri -> String
@@ -1261,6 +1310,52 @@ invalidNameCharacters =
     Set.fromList [ '@', '#', ':' ]
 
 
+httpErrorToString : HttpError -> String
+httpErrorToString httpError =
+    let
+        statusCodeText statusCode errorCode =
+            "Status code " ++ String.fromInt statusCode ++ ": " ++ errorCodeToString errorCode
+    in
+    case httpError of
+        NotModified304 errorCode ->
+            statusCodeText 304 errorCode
+
+        --BadRequest400 { headers, body } ->
+        --    statusCodeText 400 ++ ": " ++ body
+        Unauthorized401 errorCode ->
+            statusCodeText 401 errorCode
+
+        Forbidden403 errorCode ->
+            statusCodeText 403 errorCode
+
+        NotFound404 errorCode ->
+            statusCodeText 404 errorCode
+
+        --MethodNotAllowed405 { headers, body } ->
+        --    statusCodeText 405 ++ ": " ++ body
+        TooManyRequests429 rateLimit ->
+            let
+                value =
+                    Duration.inMilliseconds rateLimit.retryAfter |> round |> String.fromInt
+            in
+            "Status code " ++ String.fromInt 429 ++ ": Too many requests. Retry after " ++ value ++ " milliseconds."
+
+        GatewayUnavailable502 errorCode ->
+            statusCodeText 502 errorCode
+
+        ServerError5xx { statusCode, errorCode } ->
+            statusCodeText statusCode errorCode
+
+        NetworkError ->
+            "Network error"
+
+        Timeout ->
+            "Request timed out"
+
+        UnexpectedError message ->
+            "Unexpected error: " ++ message
+
+
 
 --- TYPES ---
 
@@ -1273,6 +1368,324 @@ type Authentication
 type OptionalData a
     = Included a
     | Missing
+
+
+{-| These are possible error responses you can get when making an HTTP request.
+
+  - `NotModified304`: The entity was not modified (no action was taken).
+  - `Unauthorized401`: The `Authorization` header was missing or invalid.
+  - `Forbidden403`: The `Authorization` token you passed did not have permission to the resource.
+  - `NotFound404`: The resource at the location specified doesn't exist.
+  - `TooManyRequests429`: You are being rate limited, see [Rate Limits](https://discord.com/developers/docs/topics/rate-limits#rate-limits).
+  - `GatewayUnavailable502`: There was not a gateway available to process your request. Wait a bit and retry.
+  - `ServerError5xx`: The server had an error processing your request (these are rare).
+  - `NetworkError`: You don't have an internet connection, you're getting blocked by CORS, etc.
+  - `Timeout`: The request took too long to complete.
+  - `UnexpectedError`: Something that shouldn't have happened, happened.
+    Maybe file a github issue about this including the contents of the unknown error and the context when you got it?
+
+-}
+type HttpError
+    = NotModified304 ErrorCode
+      -- This is disabled because, provided there are no bugs in this package, this should never happen.
+      --| BadRequest400 ErrorCode
+    | Unauthorized401 ErrorCode
+    | Forbidden403 ErrorCode
+    | NotFound404 ErrorCode
+      -- This is disabled because, provided there are no bugs in this package, this should never happen.
+      --| MethodNotAllowed405 { headers : Dict String String, body : String }
+    | TooManyRequests429 RateLimit
+    | GatewayUnavailable502 ErrorCode
+    | ServerError5xx { statusCode : Int, errorCode : ErrorCode }
+    | NetworkError
+    | Timeout
+    | UnexpectedError String
+
+
+type ErrorCode
+    = GeneralError0
+    | UnknownAccount10001
+    | UnknownApp10002
+    | UnknownChannel10003
+    | UnknownGuild10004
+    | UnknownIntegration1005
+    | UnknownInvite10006
+    | UnknownMember10007
+    | UnknownMessage10008
+    | UnknownPermissionOverwrite10009
+    | UnknownProvider10010
+    | UnknownRole10011
+    | UnknownToken10012
+    | UnknownUser10013
+    | UnknownEmoji10014
+    | UnknownWebhook10015
+    | UnknownBan10026
+    | UnknownSku10027
+    | UnknownStoreListing10028
+    | UnknownEntitlement10029
+    | UnknownBuild10030
+    | UnknownLobby10031
+    | UnknownBranch10032
+    | UnknownRedistributable10036
+    | BotsCannotUseThisEndpoint20001
+    | OnlyBotsCanUseThisEndpoint20002
+    | MaxNumberOfGuilds30001
+    | MaxNumberOfFriends30002
+    | MaxNumberOfPinsForChannel30003
+    | MaxNumberOfGuildsRoles30005
+    | MaxNumberOfWebhooks30007
+    | MaxNumberOfReactions30010
+    | MaxNumberOfGuildChannels30013
+    | MaxNumberOfAttachmentsInAMessage30015
+    | MaxNumberOfInvitesReached30016
+    | UnauthorizedProvideAValidTokenAndTryAgain40001
+    | VerifyYourAccount40002
+    | RequestEntityTooLarge40005
+    | FeatureTemporarilyDisabledServerSide40006
+    | UserIsBannedFromThisGuild40007
+    | MissingAccess50001
+    | InvalidAccountType50002
+    | CannotExecuteActionOnADmChannel50003
+    | GuildWidgetDisabled50004
+    | CannotEditAMessageAuthoredByAnotherUser50005
+    | CannotSendAnEmptyMessage50006
+    | CannotSendMessagesToThisUser50007
+    | CannotSendMessagesInAVoiceChannel50008
+    | ChannelVerificationLevelTooHigh50009
+    | OAuth2AppDoesNotHaveABot50010
+    | OAuth2AppLimitReached50011
+    | InvalidOAuth2State50012
+    | YouLackPermissionsToPerformThatAction50013
+    | InvalidAuthenticationTokenProvided50014
+    | NoteWasTooLong50015
+    | ProvidedTooFewOrTooManyMessagesToDelete50016
+    | MessageCanOnlyBePinnedToChannelItIsIn50019
+    | InviteCodeWasEitherInvalidOrTaken50020
+    | CannotExecuteActionOnASystemMessage50021
+    | InvalidOAuth2AccessTokenProvided50025
+    | MessageProvidedWasTooOldToBulkDelete50034
+    | InvalidFormBody50035
+    | InviteWasAcceptedToAGuildTheAppsBotIsNotIn50036
+    | InvalidApiVersionProvided50041
+    | ReactionWasBlocked90001
+    | ApiIsCurrentlyOverloaded130000
+
+
+errorCodeToString : ErrorCode -> String
+errorCodeToString errorCode =
+    case errorCode of
+        GeneralError0 ->
+            "General error (such as a malformed request body, amongst other things)"
+
+        UnknownAccount10001 ->
+            "Unknown account"
+
+        UnknownApp10002 ->
+            "Unknown application"
+
+        UnknownChannel10003 ->
+            "Unknown channel"
+
+        UnknownGuild10004 ->
+            "Unknown guild"
+
+        UnknownIntegration1005 ->
+            "Unknown integration"
+
+        UnknownInvite10006 ->
+            "Unknown invite"
+
+        UnknownMember10007 ->
+            "Unknown member"
+
+        UnknownMessage10008 ->
+            "Unknown message"
+
+        UnknownPermissionOverwrite10009 ->
+            "Unknown permission overwrite"
+
+        UnknownProvider10010 ->
+            "Unknown provider"
+
+        UnknownRole10011 ->
+            "Unknown role"
+
+        UnknownToken10012 ->
+            "Unknown token"
+
+        UnknownUser10013 ->
+            "Unknown user"
+
+        UnknownEmoji10014 ->
+            "Unknown emoji"
+
+        UnknownWebhook10015 ->
+            "Unknown webhook"
+
+        UnknownBan10026 ->
+            "Unknown ban"
+
+        UnknownSku10027 ->
+            "Unknown SKU"
+
+        UnknownStoreListing10028 ->
+            "Unknown Store Listing"
+
+        UnknownEntitlement10029 ->
+            "Unknown entitlement"
+
+        UnknownBuild10030 ->
+            "Unknown build"
+
+        UnknownLobby10031 ->
+            "Unknown lobby"
+
+        UnknownBranch10032 ->
+            "Unknown branch"
+
+        UnknownRedistributable10036 ->
+            "Unknown redistributable"
+
+        BotsCannotUseThisEndpoint20001 ->
+            "Bots cannot use this endpoint"
+
+        OnlyBotsCanUseThisEndpoint20002 ->
+            "Only bots can use this endpoint"
+
+        MaxNumberOfGuilds30001 ->
+            "Maximum number of guilds reached (100)"
+
+        MaxNumberOfFriends30002 ->
+            "Maximum number of friends reached (1000)"
+
+        MaxNumberOfPinsForChannel30003 ->
+            "Maximum number of pins reached for the channel (50)"
+
+        MaxNumberOfGuildsRoles30005 ->
+            "Maximum number of guild roles reached (250)"
+
+        MaxNumberOfWebhooks30007 ->
+            "Maximum number of webhooks reached (10)"
+
+        MaxNumberOfReactions30010 ->
+            "Maximum number of reactions reached (20)"
+
+        MaxNumberOfGuildChannels30013 ->
+            "Maximum number of guild channels reached (500)"
+
+        MaxNumberOfAttachmentsInAMessage30015 ->
+            "Maximum number of attachments in a message reached (10)"
+
+        MaxNumberOfInvitesReached30016 ->
+            "Maximum number of invites reached (1000)"
+
+        UnauthorizedProvideAValidTokenAndTryAgain40001 ->
+            "Unauthorized. Provide a valid token and try again"
+
+        VerifyYourAccount40002 ->
+            "You need to verify your account in order to perform this action"
+
+        RequestEntityTooLarge40005 ->
+            "Request entity too large. Try sending something smaller in size"
+
+        FeatureTemporarilyDisabledServerSide40006 ->
+            "This feature has been temporarily disabled server-side"
+
+        UserIsBannedFromThisGuild40007 ->
+            "The user is banned from this guild"
+
+        MissingAccess50001 ->
+            "Missing access"
+
+        InvalidAccountType50002 ->
+            "Invalid account type"
+
+        CannotExecuteActionOnADmChannel50003 ->
+            "Cannot execute action on a DM channel"
+
+        GuildWidgetDisabled50004 ->
+            "Guild widget disabled"
+
+        CannotEditAMessageAuthoredByAnotherUser50005 ->
+            "Cannot edit a message authored by another user"
+
+        CannotSendAnEmptyMessage50006 ->
+            "Cannot send an empty message"
+
+        CannotSendMessagesToThisUser50007 ->
+            "Cannot send messages to this user"
+
+        CannotSendMessagesInAVoiceChannel50008 ->
+            "Cannot send messages in a voice channel"
+
+        ChannelVerificationLevelTooHigh50009 ->
+            "Channel verification level is too high for you to gain access"
+
+        OAuth2AppDoesNotHaveABot50010 ->
+            "OAuth2 application does not have a bot"
+
+        OAuth2AppLimitReached50011 ->
+            "OAuth2 application limit reached"
+
+        InvalidOAuth2State50012 ->
+            "Invalid OAuth2 state"
+
+        YouLackPermissionsToPerformThatAction50013 ->
+            "You lack permissions to perform that action"
+
+        InvalidAuthenticationTokenProvided50014 ->
+            "Invalid authentication token provided"
+
+        NoteWasTooLong50015 ->
+            "Note was too long"
+
+        ProvidedTooFewOrTooManyMessagesToDelete50016 ->
+            "Provided too few or too many messages to delete. Must provide at least 2 and fewer than 100 messages to delete"
+
+        MessageCanOnlyBePinnedToChannelItIsIn50019 ->
+            "A message can only be pinned to the channel it was sent in"
+
+        InviteCodeWasEitherInvalidOrTaken50020 ->
+            "Invite code was either invalid or taken"
+
+        CannotExecuteActionOnASystemMessage50021 ->
+            "Cannot execute action on a system message"
+
+        InvalidOAuth2AccessTokenProvided50025 ->
+            "Invalid OAuth2 access token provided"
+
+        MessageProvidedWasTooOldToBulkDelete50034 ->
+            "A message provided was too old to bulk delete"
+
+        InvalidFormBody50035 ->
+            "Invalid form body (returned for both application/json and multipart/form-data bodies), or invalid Content-Type provided"
+
+        InviteWasAcceptedToAGuildTheAppsBotIsNotIn50036 ->
+            "An invite was accepted to a guild the application's bot is not in"
+
+        InvalidApiVersionProvided50041 ->
+            "Invalid API version provided"
+
+        ReactionWasBlocked90001 ->
+            "Reaction was blocked"
+
+        ApiIsCurrentlyOverloaded130000 ->
+            "API resource is currently overloaded. Try again a little later"
+
+
+{-| Additional info about a rate limit error.
+
+  - `retryAfter`: How long until you can make a new request
+  - `isGlobal`: Does this rate limit affect this specific request type or does it affect all requests?
+
+-}
+type alias RateLimit =
+    { retryAfter : Duration
+    , isGlobal : Bool
+
+    -- This isn't needed as it just says the same thing everytime.
+    --, message : String
+    }
 
 
 type alias Guild =
@@ -1813,6 +2226,99 @@ type alias CreateGuildCategoryChannel =
 
 
 --- DECODERS ---
+
+
+decodeRateLimit : JD.Decoder RateLimit
+decodeRateLimit =
+    JD.succeed RateLimit
+        |> JD.andMap (JD.field "retry_after" (JD.float |> JD.map Duration.milliseconds))
+        |> JD.andMap (JD.field "global" JD.bool)
+
+
+decodeErrorCode : JD.Decoder ErrorCode
+decodeErrorCode =
+    JD.field "code" JD.int
+        |> JD.andThen
+            (\rawCode ->
+                case Dict.get rawCode errorCodeDict of
+                    Just errorCode ->
+                        JD.succeed errorCode
+
+                    Nothing ->
+                        JD.fail ("Invalid error code: " ++ String.fromInt rawCode)
+            )
+
+
+errorCodeDict : Dict Int ErrorCode
+errorCodeDict =
+    [ ( 0, GeneralError0 )
+    , ( 10001, UnknownAccount10001 )
+    , ( 10002, UnknownApp10002 )
+    , ( 10003, UnknownChannel10003 )
+    , ( 10004, UnknownGuild10004 )
+    , ( 10005, UnknownIntegration1005 )
+    , ( 10006, UnknownInvite10006 )
+    , ( 10007, UnknownMember10007 )
+    , ( 10008, UnknownMessage10008 )
+    , ( 10009, UnknownPermissionOverwrite10009 )
+    , ( 10010, UnknownProvider10010 )
+    , ( 10011, UnknownRole10011 )
+    , ( 10012, UnknownToken10012 )
+    , ( 10013, UnknownUser10013 )
+    , ( 10014, UnknownEmoji10014 )
+    , ( 10015, UnknownWebhook10015 )
+    , ( 10026, UnknownBan10026 )
+    , ( 10027, UnknownSku10027 )
+    , ( 10028, UnknownStoreListing10028 )
+    , ( 10029, UnknownEntitlement10029 )
+    , ( 10030, UnknownBuild10030 )
+    , ( 10031, UnknownLobby10031 )
+    , ( 10032, UnknownBranch10032 )
+    , ( 10036, UnknownRedistributable10036 )
+    , ( 20001, BotsCannotUseThisEndpoint20001 )
+    , ( 20002, OnlyBotsCanUseThisEndpoint20002 )
+    , ( 30001, MaxNumberOfGuilds30001 )
+    , ( 30002, MaxNumberOfFriends30002 )
+    , ( 30003, MaxNumberOfPinsForChannel30003 )
+    , ( 30005, MaxNumberOfGuildsRoles30005 )
+    , ( 30007, MaxNumberOfWebhooks30007 )
+    , ( 30010, MaxNumberOfReactions30010 )
+    , ( 30013, MaxNumberOfGuildChannels30013 )
+    , ( 30015, MaxNumberOfAttachmentsInAMessage30015 )
+    , ( 30016, MaxNumberOfInvitesReached30016 )
+    , ( 40001, UnauthorizedProvideAValidTokenAndTryAgain40001 )
+    , ( 40002, VerifyYourAccount40002 )
+    , ( 40005, RequestEntityTooLarge40005 )
+    , ( 40006, FeatureTemporarilyDisabledServerSide40006 )
+    , ( 40007, UserIsBannedFromThisGuild40007 )
+    , ( 50001, MissingAccess50001 )
+    , ( 50002, InvalidAccountType50002 )
+    , ( 50003, CannotExecuteActionOnADmChannel50003 )
+    , ( 50004, GuildWidgetDisabled50004 )
+    , ( 50005, CannotEditAMessageAuthoredByAnotherUser50005 )
+    , ( 50006, CannotSendAnEmptyMessage50006 )
+    , ( 50007, CannotSendMessagesToThisUser50007 )
+    , ( 50008, CannotSendMessagesInAVoiceChannel50008 )
+    , ( 50009, ChannelVerificationLevelTooHigh50009 )
+    , ( 50010, OAuth2AppDoesNotHaveABot50010 )
+    , ( 50011, OAuth2AppLimitReached50011 )
+    , ( 50012, InvalidOAuth2State50012 )
+    , ( 50013, YouLackPermissionsToPerformThatAction50013 )
+    , ( 50014, InvalidAuthenticationTokenProvided50014 )
+    , ( 50015, NoteWasTooLong50015 )
+    , ( 50016, ProvidedTooFewOrTooManyMessagesToDelete50016 )
+    , ( 50019, MessageCanOnlyBePinnedToChannelItIsIn50019 )
+    , ( 50020, InviteCodeWasEitherInvalidOrTaken50020 )
+    , ( 50021, CannotExecuteActionOnASystemMessage50021 )
+    , ( 50025, InvalidOAuth2AccessTokenProvided50025 )
+    , ( 50034, MessageProvidedWasTooOldToBulkDelete50034 )
+    , ( 50035, InvalidFormBody50035 )
+    , ( 50036, InviteWasAcceptedToAGuildTheAppsBotIsNotIn50036 )
+    , ( 50041, InvalidApiVersionProvided50041 )
+    , ( 90001, ReactionWasBlocked90001 )
+    , ( 130000, ApiIsCurrentlyOverloaded130000 )
+    ]
+        |> Dict.fromList
 
 
 decodeGuildMember : JD.Decoder GuildMember
