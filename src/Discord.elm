@@ -1090,7 +1090,7 @@ teamIconUrl { size, imageType } teamId teamIconHash =
 
 discordApiUrl : String
 discordApiUrl =
-    "https://discord.com/api"
+    "https://discord.com/api/v6"
 
 
 discordCdnUrl : String
@@ -1162,6 +1162,7 @@ http authentication requestType decoder path queryParameters body =
                     BearerToken token ->
                         "Bearer " ++ token
                 )
+            , Http.header "User-Agent" "DiscordBot (no website sorry, 1.0.0)"
             ]
         , url =
             Url.Builder.crossOrigin
