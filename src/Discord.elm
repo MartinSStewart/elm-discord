@@ -1239,7 +1239,19 @@ resolver decoder response =
                 |> Err
 
         Http.GoodStatus_ _ body ->
-            case JD.decodeString decoder body of
+            let
+                fixedBody =
+                    {- Sometimes the discord response will be empty.
+                       This will cause our json decoder to fail even if it's just Json.Decode.succeed.
+                       For this reason we replace empty responses with a valid json empty string.
+                    -}
+                    if body == "" then
+                        "\"\""
+
+                    else
+                        body
+            in
+            case JD.decodeString decoder fixedBody of
                 Ok data ->
                     Ok data
 
