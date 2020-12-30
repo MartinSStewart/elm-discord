@@ -8,7 +8,7 @@ module Discord exposing
     , username, nickname, Username, Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, UserId, Permissions
     , WebhookId
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OptionalData(..), Roles(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiType(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OptionalData(..), Roles(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
     )
 
 {-| Useful Discord links:
@@ -1799,8 +1799,7 @@ type alias Reaction =
 
 
 type alias Emoji =
-    { id : Maybe (Id EmojiId)
-    , name : Maybe String
+    { type_ : EmojiType
     , roles : OptionalData (List (Id RoleId))
     , user : OptionalData User
     , requireColons : OptionalData Bool
@@ -1808,6 +1807,11 @@ type alias Emoji =
     , animated : OptionalData Bool
     , available : OptionalData Bool
     }
+
+
+type EmojiType
+    = UnicodeEmoji String
+    | CustomEmoji { id : Id EmojiId, name : Maybe String }
 
 
 type Bits
@@ -2484,14 +2488,32 @@ decodeReaction =
 decodeEmoji : JD.Decoder Emoji
 decodeEmoji =
     JD.succeed Emoji
-        |> JD.andMap (JD.field "id" (JD.nullable decodeSnowflake))
-        |> JD.andMap (JD.field "name" (JD.nullable JD.string))
+        |> JD.andMap decodeEmojiType
         |> JD.andMap (decodeOptionalData "roles" (JD.list decodeSnowflake))
         |> JD.andMap (decodeOptionalData "user" decodeUser)
         |> JD.andMap (decodeOptionalData "require_colons" JD.bool)
         |> JD.andMap (decodeOptionalData "managed" JD.bool)
         |> JD.andMap (decodeOptionalData "animated" JD.bool)
         |> JD.andMap (decodeOptionalData "available" JD.bool)
+
+
+decodeEmojiType : JD.Decoder EmojiType
+decodeEmojiType =
+    JD.succeed Tuple.pair
+        |> JD.andMap (JD.field "id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (JD.field "name" (JD.nullable JD.string))
+        |> JD.andThen
+            (\tuple ->
+                case tuple of
+                    ( Just id, name ) ->
+                        CustomEmoji { id = id, name = name } |> JD.succeed
+
+                    ( Nothing, Just name ) ->
+                        UnicodeEmoji name |> JD.succeed
+
+                    ( Nothing, Nothing ) ->
+                        JD.fail "Emoji must have id or name field."
+            )
 
 
 decodePartialGuild : JD.Decoder PartialGuild
