@@ -163,11 +163,11 @@ getMessages authentication { channelId, limit, relativeTo } =
 {-| Returns a specific message in the channel.
 If operating on a guild channel, this endpoint requires the `READ_MESSAGE_HISTORY` permission to be present on the current user.
 -}
-getMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError (List Message)
+getMessage : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId } -> Task HttpError Message
 getMessage authentication { channelId, messageId } =
     httpGet
         authentication
-        (JD.list decodeMessage)
+        decodeMessage
         [ "channels", rawIdAsString channelId, "messages", rawIdAsString messageId ]
         []
 
@@ -1799,9 +1799,9 @@ type alias Reaction =
 
 
 type alias Emoji =
-    { id : Id EmojiId
+    { id : Maybe (Id EmojiId)
     , name : Maybe String
-    , roles : List (Id RoleId)
+    , roles : OptionalData (List (Id RoleId))
     , user : OptionalData User
     , requireColons : OptionalData Bool
     , managed : OptionalData Bool
@@ -2348,11 +2348,16 @@ decodeGuildMember =
 
 decodeOptionalData : String -> JD.Decoder a -> JD.Decoder (OptionalData a)
 decodeOptionalData field decoder =
-    JD.oneOf
-        [ JD.field field decoder |> JD.map Included
-        , JD.field field (JD.fail ("Incorrect data for field: " ++ field))
-        , JD.succeed Missing
-        ]
+    JD.optionalField field decoder
+        |> JD.map
+            (\value ->
+                case value of
+                    Just a ->
+                        Included a
+
+                    Nothing ->
+                        Missing
+            )
 
 
 decodeSnowflake : JD.Decoder (Id idType)
@@ -2479,9 +2484,9 @@ decodeReaction =
 decodeEmoji : JD.Decoder Emoji
 decodeEmoji =
     JD.succeed Emoji
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" (JD.nullable decodeSnowflake))
         |> JD.andMap (JD.field "name" (JD.nullable JD.string))
-        |> JD.andMap (JD.field "roles" (JD.list decodeSnowflake))
+        |> JD.andMap (decodeOptionalData "roles" (JD.list decodeSnowflake))
         |> JD.andMap (decodeOptionalData "user" decodeUser)
         |> JD.andMap (decodeOptionalData "require_colons" JD.bool)
         |> JD.andMap (decodeOptionalData "managed" JD.bool)
