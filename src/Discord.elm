@@ -8,7 +8,7 @@ module Discord exposing
     , username, nickname, Username, Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, UserId, Permissions
     , WebhookId
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiType(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OptionalData(..), Roles(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , AchievementId, ApplicationId, Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiType(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OpDispatchEvent(..), OptionalData(..), OverwriteId, Roles(..), SequenceCounter, SessionId, TeamId, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
     )
 
 {-| Useful Discord links:
@@ -77,6 +77,7 @@ These are functions that return a url pointing to a particular image.
 -}
 
 import Binary
+import Bitwise
 import Dict exposing (Dict)
 import Duration exposing (Duration, Seconds)
 import Http
@@ -927,6 +928,15 @@ getCurrentUser authentication =
 getUser : Authentication -> Id UserId -> Task HttpError User
 getUser authentication userId =
     httpGet authentication decodeUser [ "users", rawIdAsString userId ] []
+
+
+createDmChannel : Authentication -> Id UserId -> Task HttpError Channel
+createDmChannel authentication userId =
+    httpPost authentication
+        decodeChannel
+        [ "users", "@me", "channels" ]
+        []
+        (JE.object [ ( "recipient_id", encodeId userId ) ])
 
 
 {-| Modify the requester's user account settings.
@@ -2078,6 +2088,14 @@ type AchievementId
     = AchievementId Never
 
 
+type SessionId
+    = SessionId String
+
+
+type SequenceCounter
+    = SequenceCounter Int
+
+
 type InviteCode
     = InviteCode String
 
@@ -2107,13 +2125,38 @@ type alias Message =
     -- nonce field is excluded
     , pinned : Bool
     , webhookId : OptionalData (Id WebhookId)
-    , type_ : Int
+    , type_ : MessageType
 
     -- activity field is excluded
     -- application field is excluded
     -- message_reference field is excluded
     , flags : OptionalData Int
     }
+
+
+type MessageType
+    = DefaultMessageType
+    | RecipientAdd
+    | RecipientRemove
+    | Call
+    | ChannelNameChange
+    | ChannelIconChange
+    | ChannelPinnedMessage
+    | GuildMemberJoin
+    | UserPremiumGuildSubscription
+    | UserPremiumGuildSubscriptionTier1
+    | UserPremiumGuildSubscriptionTier2
+    | UserPremiumGuildSubscriptionTier3
+    | ChannelFollowAdd
+    | GuildDiscoveryDisqualified
+    | GuildDiscoveryRequalified
+    | GuildDiscoveryGracePeriodInitialWarning
+    | GuildDiscoveryGracePeriodFinalWarning
+    | ThreadCreated
+    | Reply
+    | ApplicationCommand
+    | ThreadStarterMessage
+    | GuildInviteReminder
 
 
 {-| -}
@@ -2245,6 +2288,19 @@ type alias CreateGuildCategoryChannel =
 --- DECODERS ---
 
 
+decodeSessionId : JD.Decoder SessionId
+decodeSessionId =
+    JD.string
+        |> JD.andThen
+            (\text ->
+                if String.all Char.isHexDigit text then
+                    JD.succeed (SessionId text)
+
+                else
+                    JD.fail "Invalid session ID"
+            )
+
+
 decodeRateLimit : JD.Decoder RateLimit
 decodeRateLimit =
     JD.succeed RateLimit
@@ -2343,7 +2399,7 @@ decodeGuildMember =
     JD.succeed GuildMember
         |> JD.andMap (decodeOptionalData "user" decodeUser)
         |> JD.andMap (JD.field "nick" (JD.nullable decodeNickname))
-        |> JD.andMap (JD.field "roles" (JD.list decodeSnowflake))
+        |> JD.andMap (JD.field "roles" (JD.list decodeId))
         |> JD.andMap (JD.field "joined_at" Iso8601.decoder)
         |> JD.andMap (decodeOptionalData "premium_since" (JD.nullable Iso8601.decoder))
         |> JD.andMap (JD.field "deaf" JD.bool)
@@ -2364,8 +2420,8 @@ decodeOptionalData field decoder =
             )
 
 
-decodeSnowflake : JD.Decoder (Id idType)
-decodeSnowflake =
+decodeId : JD.Decoder (Id idType)
+decodeId =
     JD.andThen
         (UInt64.fromString
             >> Maybe.map (Id >> JD.succeed)
@@ -2382,28 +2438,105 @@ decodeHash =
 decodeMessage : JD.Decoder Message
 decodeMessage =
     JD.succeed Message
-        |> JD.andMap (JD.field "id" decodeSnowflake)
-        |> JD.andMap (JD.field "channel_id" decodeSnowflake)
-        |> JD.andMap (decodeOptionalData "guild_id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
+        |> JD.andMap (JD.field "channel_id" decodeId)
+        |> JD.andMap (decodeOptionalData "guild_id" decodeId)
         |> JD.andMap (JD.field "author" decodeUser)
         |> JD.andMap (JD.field "content" JD.string)
         |> JD.andMap (JD.field "timestamp" Iso8601.decoder)
         |> JD.andMap (JD.field "edited_timestamp" (JD.nullable Iso8601.decoder))
         |> JD.andMap (JD.field "tts" JD.bool)
         |> JD.andMap (JD.field "mention_everyone" JD.bool)
-        |> JD.andMap (JD.field "mention_roles" (JD.list decodeSnowflake))
+        |> JD.andMap (JD.field "mention_roles" (JD.list decodeId))
         |> JD.andMap (JD.field "attachments" (JD.list decodeAttachment))
         |> JD.andMap (decodeOptionalData "reactions" (JD.list decodeReaction))
         |> JD.andMap (JD.field "pinned" JD.bool)
-        |> JD.andMap (decodeOptionalData "webhook_id" decodeSnowflake)
-        |> JD.andMap (JD.field "type" JD.int)
+        |> JD.andMap (decodeOptionalData "webhook_id" decodeId)
+        |> JD.andMap (JD.field "type" decodeMessageType)
         |> JD.andMap (decodeOptionalData "flags" JD.int)
+
+
+decodeMessageType : JD.Decoder MessageType
+decodeMessageType =
+    JD.int
+        |> JD.andThen
+            (\messageType ->
+                case messageType of
+                    0 ->
+                        JD.succeed DefaultMessageType
+
+                    1 ->
+                        JD.succeed RecipientAdd
+
+                    2 ->
+                        JD.succeed RecipientRemove
+
+                    3 ->
+                        JD.succeed Call
+
+                    4 ->
+                        JD.succeed ChannelNameChange
+
+                    5 ->
+                        JD.succeed ChannelIconChange
+
+                    6 ->
+                        JD.succeed ChannelPinnedMessage
+
+                    7 ->
+                        JD.succeed GuildMemberJoin
+
+                    8 ->
+                        JD.succeed UserPremiumGuildSubscription
+
+                    9 ->
+                        JD.succeed UserPremiumGuildSubscriptionTier1
+
+                    10 ->
+                        JD.succeed UserPremiumGuildSubscriptionTier2
+
+                    11 ->
+                        JD.succeed UserPremiumGuildSubscriptionTier3
+
+                    12 ->
+                        JD.succeed ChannelFollowAdd
+
+                    14 ->
+                        JD.succeed GuildDiscoveryDisqualified
+
+                    15 ->
+                        JD.succeed GuildDiscoveryRequalified
+
+                    16 ->
+                        JD.succeed GuildDiscoveryGracePeriodInitialWarning
+
+                    17 ->
+                        JD.succeed GuildDiscoveryGracePeriodFinalWarning
+
+                    18 ->
+                        JD.succeed ThreadCreated
+
+                    19 ->
+                        JD.succeed Reply
+
+                    20 ->
+                        JD.succeed ApplicationCommand
+
+                    21 ->
+                        JD.succeed ThreadStarterMessage
+
+                    22 ->
+                        JD.succeed GuildInviteReminder
+
+                    _ ->
+                        JD.fail "Invalid message type"
+            )
 
 
 decodeUser : JD.Decoder User
 decodeUser =
     JD.succeed User
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
         |> JD.andMap (JD.field "username" decodeUsername)
         |> JD.andMap (JD.field "discriminator" decodeDiscriminator)
         |> JD.andMap (JD.field "avatar" (JD.nullable decodeHash))
@@ -2449,7 +2582,7 @@ decodeNickname =
 decodeAttachment : JD.Decoder Attachment
 decodeAttachment =
     JD.succeed Attachment
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
         |> JD.andMap (JD.field "filename" JD.string)
         |> JD.andMap (JD.field "size" JD.int)
         |> JD.andMap (JD.field "url" JD.string)
@@ -2489,7 +2622,7 @@ decodeEmoji : JD.Decoder Emoji
 decodeEmoji =
     JD.succeed Emoji
         |> JD.andMap decodeEmojiType
-        |> JD.andMap (decodeOptionalData "roles" (JD.list decodeSnowflake))
+        |> JD.andMap (decodeOptionalData "roles" (JD.list decodeId))
         |> JD.andMap (decodeOptionalData "user" decodeUser)
         |> JD.andMap (decodeOptionalData "require_colons" JD.bool)
         |> JD.andMap (decodeOptionalData "managed" JD.bool)
@@ -2500,7 +2633,7 @@ decodeEmoji =
 decodeEmojiType : JD.Decoder EmojiType
 decodeEmojiType =
     JD.succeed Tuple.pair
-        |> JD.andMap (JD.field "id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (JD.field "id" (JD.nullable decodeId))
         |> JD.andMap (JD.field "name" (JD.nullable JD.string))
         |> JD.andThen
             (\tuple ->
@@ -2519,7 +2652,7 @@ decodeEmojiType =
 decodePartialGuild : JD.Decoder PartialGuild
 decodePartialGuild =
     JD.succeed PartialGuild
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
         |> JD.andMap (JD.field "name" JD.string)
         |> JD.andMap (JD.field "icon" (JD.nullable decodeHash))
         |> JD.andMap (JD.field "owner" JD.bool)
@@ -2529,31 +2662,31 @@ decodePartialGuild =
 decodeGuild : JD.Decoder Guild
 decodeGuild =
     JD.succeed Guild
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
         |> JD.andMap (JD.field "name" JD.string)
         |> JD.andMap (JD.field "icon" (JD.nullable decodeHash))
         |> JD.andMap (JD.field "splash" (JD.nullable decodeHash))
         |> JD.andMap (JD.field "discovery_splash" (JD.nullable decodeHash))
         |> JD.andMap (decodeOptionalData "owner" JD.bool)
-        |> JD.andMap (JD.field "owner_id" decodeSnowflake)
+        |> JD.andMap (JD.field "owner_id" decodeId)
         |> JD.andMap (decodeOptionalData "permissions" decodePermissions)
         |> JD.andMap (JD.field "region" JD.string)
-        |> JD.andMap (JD.field "afk_channel_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (JD.field "afk_channel_id" (JD.nullable decodeId))
         |> JD.andMap (JD.field "afk_timeout" (JD.map Quantity JD.int))
         |> JD.andMap (decodeOptionalData "embed_enabled" JD.bool)
-        |> JD.andMap (decodeOptionalData "embed_channel_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (decodeOptionalData "embed_channel_id" (JD.nullable decodeId))
         |> JD.andMap (JD.field "verification_level" JD.int)
         |> JD.andMap (JD.field "default_message_notifications" JD.int)
         |> JD.andMap (JD.field "explicit_content_filter" JD.int)
         |> JD.andMap (JD.field "emojis" (JD.list decodeEmoji))
         |> JD.andMap (JD.field "features" (JD.list JD.string))
         |> JD.andMap (JD.field "mfa_level" JD.int)
-        |> JD.andMap (JD.field "application_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (JD.field "application_id" (JD.nullable decodeId))
         |> JD.andMap (decodeOptionalData "widget_enabled" JD.bool)
-        |> JD.andMap (decodeOptionalData "widget_channel_id" (JD.nullable decodeSnowflake))
-        |> JD.andMap (JD.field "system_channel_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (decodeOptionalData "widget_channel_id" (JD.nullable decodeId))
+        |> JD.andMap (JD.field "system_channel_id" (JD.nullable decodeId))
         |> JD.andMap (JD.field "system_channel_flags" JD.int)
-        |> JD.andMap (JD.field "rules_channel_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (JD.field "rules_channel_id" (JD.nullable decodeId))
         |> JD.andMap (decodeOptionalData "joined_at" Iso8601.decoder)
         |> JD.andMap (decodeOptionalData "large" JD.bool)
         |> JD.andMap (decodeOptionalData "unavailable" JD.bool)
@@ -2568,7 +2701,7 @@ decodeGuild =
         |> JD.andMap (JD.field "premium_tier" JD.int)
         |> JD.andMap (decodeOptionalData "premium_subscription_count" JD.int)
         |> JD.andMap (JD.field "preferred_locale" JD.string)
-        |> JD.andMap (JD.field "public_updates_channel_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (JD.field "public_updates_channel_id" (JD.nullable decodeId))
         |> JD.andMap (decodeOptionalData "approximate_member_count" JD.int)
         |> JD.andMap (decodeOptionalData "approximate_presence_count" JD.int)
 
@@ -2623,22 +2756,22 @@ decodePermissions =
 decodeChannel : JD.Decoder Channel
 decodeChannel =
     JD.succeed Channel
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
         |> JD.andMap (JD.field "type" decodeChannelType)
-        |> JD.andMap (decodeOptionalData "guild_id" decodeSnowflake)
+        |> JD.andMap (decodeOptionalData "guild_id" decodeId)
         |> JD.andMap (decodeOptionalData "position" JD.int)
         |> JD.andMap (decodeOptionalData "name" JD.string)
         |> JD.andMap (decodeOptionalData "topic" (JD.nullable JD.string))
         |> JD.andMap (decodeOptionalData "nsfw" JD.bool)
-        |> JD.andMap (decodeOptionalData "last_message_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (decodeOptionalData "last_message_id" (JD.nullable decodeId))
         |> JD.andMap (decodeOptionalData "bitrate" (JD.map Quantity JD.int))
         |> JD.andMap (decodeOptionalData "user_limit" JD.int)
         |> JD.andMap (decodeOptionalData "rate_limit_per_user" (JD.map Quantity JD.int))
         |> JD.andMap (decodeOptionalData "recipients" (JD.list decodeUser))
         |> JD.andMap (decodeOptionalData "icon" (JD.nullable JD.string))
-        |> JD.andMap (decodeOptionalData "owner_id" decodeSnowflake)
-        |> JD.andMap (decodeOptionalData "application_id" decodeSnowflake)
-        |> JD.andMap (decodeOptionalData "parent_id" (JD.nullable decodeSnowflake))
+        |> JD.andMap (decodeOptionalData "owner_id" decodeId)
+        |> JD.andMap (decodeOptionalData "application_id" decodeId)
+        |> JD.andMap (decodeOptionalData "parent_id" (JD.nullable decodeId))
         |> JD.andMap (decodeOptionalData "last_pin_timestamp" Iso8601.decoder)
 
 
@@ -2725,7 +2858,7 @@ decodeInviteWithMetadata =
 decodePartialChannel : JD.Decoder PartialChannel
 decodePartialChannel =
     JD.map3 PartialChannel
-        (JD.field "id" decodeSnowflake)
+        (JD.field "id" decodeId)
         (JD.field "name" JD.string)
         (JD.field "type" decodeChannelType)
 
@@ -2733,7 +2866,7 @@ decodePartialChannel =
 decodePartialUser : JD.Decoder PartialUser
 decodePartialUser =
     JD.map4 PartialUser
-        (JD.field "id" decodeSnowflake)
+        (JD.field "id" decodeId)
         (JD.field "username" decodeUsername)
         (JD.field "avatar" (JD.nullable decodeHash))
         (JD.field "discriminator" decodeDiscriminator)
@@ -2756,7 +2889,7 @@ decodeDiscriminator =
 decodeGuildPreview : JD.Decoder GuildPreview
 decodeGuildPreview =
     JD.succeed GuildPreview
-        |> JD.andMap (JD.field "id" decodeSnowflake)
+        |> JD.andMap (JD.field "id" decodeId)
         |> JD.andMap (JD.field "name" JD.string)
         |> JD.andMap (JD.field "icon" (JD.nullable decodeHash))
         |> JD.andMap (JD.field "splash" (JD.nullable decodeHash))
@@ -2770,6 +2903,11 @@ decodeGuildPreview =
 
 
 --- ENCODERS ---
+
+
+encodeSessionId : SessionId -> JE.Value
+encodeSessionId (SessionId sessionId) =
+    JE.string sessionId
 
 
 encodeId : Id idType -> JE.Value
@@ -2820,3 +2958,179 @@ encodeOptionalData fieldName encoder optionalData =
 
         Missing ->
             []
+
+
+
+--- GATEWAY ---
+
+
+decodeDispatchEvent : String -> JD.Decoder OpDispatchEvent
+decodeDispatchEvent eventName =
+    case eventName of
+        "READY" ->
+            JD.field "d"
+                (JD.succeed ReadyEvent
+                    |> JD.andMap (JD.field "session_id" decodeSessionId)
+                )
+
+        "RESUMED" ->
+            JD.field "d" (JD.succeed ResumedEvent)
+
+        "MESSAGE_CREATE" ->
+            JD.field "d" decodeMessage |> JD.map MessageCreateEvent
+
+        "MESSAGE_UPDATE" ->
+            JD.field "d" decodeMessage |> JD.map MessageUpdateEvent
+
+        "MESSAGE_DELETE" ->
+            JD.field "d"
+                (JD.succeed MessageDeleteEvent
+                    |> JD.andMap (JD.field "id" decodeId)
+                    |> JD.andMap (JD.field "channel_id" decodeId)
+                    |> JD.andMap (decodeOptionalData "guild_id" decodeId)
+                )
+
+        "MESSAGE_DELETE_BULK" ->
+            JD.field "d"
+                (JD.succeed MessageDeleteBulkEvent
+                    |> JD.andMap (JD.field "id" (JD.list decodeId))
+                    |> JD.andMap (JD.field "channel_id" decodeId)
+                    |> JD.andMap (decodeOptionalData "guild_id" decodeId)
+                )
+
+        _ ->
+            JD.fail <| "Invalid event name: " ++ eventName
+
+
+decodeGatewayEvent : JD.Decoder GatewayEvent
+decodeGatewayEvent =
+    JD.field "op" JD.int
+        |> JD.andThen
+            (\opCode ->
+                case opCode of
+                    0 ->
+                        JD.field "t" JD.string
+                            |> JD.andThen decodeDispatchEvent
+                            |> JD.andThen
+                                (\event ->
+                                    JD.field "s" JD.int
+                                        |> JD.map
+                                            (\s ->
+                                                OpDispatch (SequenceCounter s) event
+                                            )
+                                )
+
+                    7 ->
+                        JD.succeed OpReconnect
+
+                    9 ->
+                        JD.succeed OpInvalidSession
+
+                    10 ->
+                        JD.at [ "d", "heartbeat_interval" ] JD.int
+                            |> JD.map
+                                (\ms ->
+                                    OpHello
+                                        { heartbeatInterval = Duration.milliseconds (toFloat ms) }
+                                )
+
+                    11 ->
+                        JD.succeed OpAck
+
+                    _ ->
+                        JD.fail <| "Invalid op code: " ++ String.fromInt opCode
+            )
+
+
+type GatewayCommand
+    = OpIdentify Authentication
+    | OpResume Authentication SessionId SequenceCounter
+    | OpHeatbeat
+    | OpRequestGuildMembers
+    | OpUpdateVoiceState
+    | OpUpdatePresence
+
+
+type GatewayEvent
+    = OpHello { heartbeatInterval : Duration }
+    | OpAck
+    | OpDispatch SequenceCounter OpDispatchEvent
+    | OpReconnect
+    | OpInvalidSession
+
+
+type OpDispatchEvent
+    = ReadyEvent SessionId
+    | ResumedEvent
+    | MessageCreateEvent Message
+    | MessageUpdateEvent Message
+    | MessageDeleteEvent (Id MessageId) (Id ChannelId) (OptionalData (Id GuildId))
+    | MessageDeleteBulkEvent (List (Id MessageId)) (Id ChannelId) (OptionalData (Id GuildId))
+
+
+encodeGatewayCommand : GatewayCommand -> JE.Value
+encodeGatewayCommand gatewayCommand =
+    case gatewayCommand of
+        OpIdentify authToken ->
+            JE.object
+                [ ( "op", JE.int 2 )
+                , ( "d"
+                  , JE.object
+                        [ ( "token"
+                          , (case authToken of
+                                BotToken token ->
+                                    token
+
+                                BearerToken token ->
+                                    token
+                            )
+                                |> JE.string
+                          )
+                        , ( "properties"
+                          , JE.object
+                                [ ( "$os", JE.string "Linux" )
+                                , ( "$browser", JE.string "Firefox" )
+                                , ( "$device", JE.string "Computer" )
+                                ]
+                          )
+                        , ( "intents"
+                          , Bitwise.shiftLeftBy 9 1
+                                |> Bitwise.or (Bitwise.shiftLeftBy 12 1)
+                                |> JE.int
+                          )
+                        ]
+                  )
+                ]
+
+        OpResume authToken sessionId (SequenceCounter sequenceCounter) ->
+            JE.object
+                [ ( "op", JE.int 6 )
+                , ( "d"
+                  , JE.object
+                        [ ( "token"
+                          , (case authToken of
+                                BotToken token ->
+                                    token
+
+                                BearerToken token ->
+                                    token
+                            )
+                                |> JE.string
+                          )
+                        , ( "session_id", encodeSessionId sessionId )
+                        , ( "seq", JE.int sequenceCounter )
+                        ]
+                  )
+                ]
+
+        OpHeatbeat ->
+            JE.object [ ( "op", JE.int 1 ), ( "d", JE.null ) ]
+
+        OpRequestGuildMembers ->
+            JE.object []
+
+        OpUpdateVoiceState ->
+            JE.object []
+
+        OpUpdatePresence ->
+            JE.object []
