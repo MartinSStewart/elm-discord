@@ -8,7 +8,7 @@ module Discord exposing
     , username, nickname, Username, Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, UserId, Permissions
     , WebhookId
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , AchievementId, ApplicationId, Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiType(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), Modify(..), OpDispatchEvent(..), OptionalData(..), OverwriteId, Roles(..), SequenceCounter, SessionId, TeamId, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , AchievementId, ApplicationId, Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiType(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, Id(..), ImageHash, ImageSize(..), MessageUpdate, Modify(..), OpDispatchEvent(..), OptionalData(..), OverwriteId, Roles(..), SequenceCounter, SessionId, TeamId, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, code, codeBlock, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, mentionUser, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, strikethrough, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
     )
 
 {-| Useful Discord links:
@@ -2980,7 +2980,7 @@ decodeDispatchEvent eventName =
             JD.field "d" decodeMessage |> JD.map MessageCreateEvent
 
         "MESSAGE_UPDATE" ->
-            JD.field "d" decodeMessage |> JD.map MessageUpdateEvent
+            JD.field "d" decodeMessageUpdate |> JD.map MessageUpdateEvent
 
         "MESSAGE_DELETE" ->
             JD.field "d"
@@ -3000,6 +3000,21 @@ decodeDispatchEvent eventName =
 
         _ ->
             JD.fail <| "Invalid event name: " ++ eventName
+
+
+type alias MessageUpdate =
+    { id : Id MessageId
+    , channelId : Id ChannelId
+    , guildId : Id GuildId
+    }
+
+
+decodeMessageUpdate : JD.Decoder MessageUpdate
+decodeMessageUpdate =
+    JD.succeed MessageUpdate
+        |> JD.andMap (JD.field "id" decodeId)
+        |> JD.andMap (JD.field "channel_id" decodeId)
+        |> JD.andMap (JD.field "guild_id" decodeId)
 
 
 decodeGatewayEvent : JD.Decoder GatewayEvent
@@ -3063,7 +3078,7 @@ type OpDispatchEvent
     = ReadyEvent SessionId
     | ResumedEvent
     | MessageCreateEvent Message
-    | MessageUpdateEvent Message
+    | MessageUpdateEvent MessageUpdate
     | MessageDeleteEvent (Id MessageId) (Id ChannelId) (OptionalData (Id GuildId))
     | MessageDeleteBulkEvent (List (Id MessageId)) (Id ChannelId) (OptionalData (Id GuildId))
 
