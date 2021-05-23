@@ -150,7 +150,7 @@ toStringHelper markdown =
             "```" ++ Maybe.withDefault "" language ++ "\n" ++ text_ ++ "```"
 
         Quote content ->
-            "> " ++ (List.map toStringHelper content |> String.concat) ++ "\n"
+            "\n> " ++ (List.map toStringHelper content |> String.concat) ++ "\n"
 
         Code text_ ->
             "`" ++ String.replace "`" "``" text_ ++ "`"
