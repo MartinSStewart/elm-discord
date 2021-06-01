@@ -1134,7 +1134,7 @@ httpPut authentication decoder path queryParameters body =
 
 httpPatch : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task HttpError a
 httpPatch authentication decoder path queryParameters body =
-    http authentication "DELETE" decoder path queryParameters (Http.jsonBody body)
+    http authentication "PATCH" decoder path queryParameters (Http.jsonBody body)
 
 
 httpDelete : Authentication -> JD.Decoder a -> List String -> List QueryParameter -> JE.Value -> Task HttpError a
@@ -1165,7 +1165,7 @@ http authentication requestType decoder path queryParameters body =
         , url =
             Url.Builder.crossOrigin
                 discordApiUrl
-                (List.map Url.percentEncode path)
+                (List.map (Url.percentEncode >> String.replace "%40" "@") path)
                 queryParameters
         , resolver = Http.stringResolver (resolver decoder)
         , body = body
@@ -1398,7 +1398,15 @@ type OptionalData a
 -}
 type HttpError
     = NotModified304 ErrorCode
-      -- This is disabled because, provided there are no bugs in this package, this should never happen.
+      {- This is disabled because, provided there are no bugs in this package, this should never happen.
+
+         One caveat to this is changing the user avatar which can trigger a 400 status and return this body
+         { "avatar": [ "You are changing your avatar too fast. Try again later." ]}
+
+         This is something that can happen even if this package is bug free.
+         For now it will just end up as UnexpectedError though because it doesn't fit well with other errors since it's missing an error code.
+
+      -}
       --| BadRequest400 ErrorCode
     | Unauthorized401 ErrorCode
     | Forbidden403 ErrorCode
