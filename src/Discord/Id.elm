@@ -3,7 +3,7 @@ module Discord.Id exposing
     , ApplicationId
     , AttachmentId
     , ChannelId
-    , EmojiId
+    , CustomEmojiId
     , GuildId
     , Id
     , MessageId
@@ -59,8 +59,8 @@ type AttachmentId
     = AttachmentId Never
 
 
-type EmojiId
-    = EmojiId Never
+type CustomEmojiId
+    = CustomEmojiId Never
 
 
 type ApplicationId

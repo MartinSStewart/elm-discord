@@ -2,12 +2,12 @@ module Discord exposing
     ( Authentication, botToken, bearerToken
     , HttpError(..), ErrorCode(..), RateLimit, httpErrorToString, errorCodeToString
     , getChannel, deleteChannel, getMessages, getMessage, MessagesRelativeTo(..), createMessage, createMarkdownMessage, getReactions, createReaction, deleteOwnReaction, deleteUserReaction, deleteAllReactions, deleteAllReactionsForEmoji, deleteMessage, bulkDeleteMessage, Channel, PartialChannel, Message, Reaction, Attachment
-    , Emoji
+    , Emoji(..)
     , Guild, GuildMember, PartialGuild
     , Invite, InviteWithMetadata, InviteCode(..)
     , username, nickname, Username, Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, Permissions
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, ImageHash, ImageSize(..), MessageUpdate, Modify(..), OpDispatchEvent(..), OptionalData(..), Roles(..), SequenceCounter, SessionId, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, ImageHash, ImageSize(..), MessageUpdate, Modify(..), OpDispatchEvent(..), OptionalData(..), Roles(..), SequenceCounter, SessionId, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
     )
 
 {-| Useful Discord links:
@@ -78,7 +78,7 @@ These are functions that return a url pointing to a particular image.
 import Binary
 import Bitwise
 import Dict exposing (Dict)
-import Discord.Id exposing (AchievementId, ApplicationId, AttachmentId, ChannelId, EmojiId, GuildId, Id, MessageId, OverwriteId, RoleId, TeamId, UserId, WebhookId)
+import Discord.Id exposing (AchievementId, ApplicationId, AttachmentId, ChannelId, CustomEmojiId, GuildId, Id, MessageId, OverwriteId, RoleId, TeamId, UserId, WebhookId)
 import Discord.Markdown exposing (Markdown)
 import Duration exposing (Duration, Seconds)
 import Http
@@ -91,7 +91,6 @@ import Quantity exposing (Quantity(..), Rate)
 import Set exposing (Set)
 import Task exposing (Task)
 import Time exposing (Posix(..))
-import UInt64 exposing (UInt64)
 import Url exposing (Url)
 import Url.Builder exposing (QueryParameter)
 
@@ -188,50 +187,74 @@ See message formatting for more information on how to properly format messages.
 The maximum request size when sending a message is 8MB.
 
 -}
-createMessage : Authentication -> { channelId : Id ChannelId, content : String } -> Task HttpError ()
-createMessage authentication { channelId, content } =
+createMessage : Authentication -> { channelId : Id ChannelId, content : String, replyTo : Maybe (Id MessageId) } -> Task HttpError ()
+createMessage authentication { channelId, content, replyTo } =
     httpPost
         authentication
         (JD.succeed ())
         [ "channels", Discord.Id.toString channelId, "messages" ]
         []
-        (JE.object [ ( "content", JE.string content ) ])
+        (( "content", JE.string content )
+            :: (case replyTo of
+                    Just replyTo_ ->
+                        [ ( "message_reference"
+                          , JE.object
+                                [ ( "message_id", Discord.Id.encodeId replyTo_ ) ]
+                          )
+                        ]
+
+                    Nothing ->
+                        []
+               )
+            |> JE.object
+        )
 
 
 {-| Same as `createMessage` but instead of taking a String, it takes a list of Markdown values.
 -}
-createMarkdownMessage : Authentication -> { channelId : Id ChannelId, content : List (Markdown ()) } -> Task HttpError ()
-createMarkdownMessage authentication { channelId, content } =
-    httpPost
+createMarkdownMessage : Authentication -> { channelId : Id ChannelId, content : List (Markdown ()), replyTo : Maybe (Id MessageId) } -> Task HttpError ()
+createMarkdownMessage authentication { channelId, content, replyTo } =
+    createMessage
         authentication
-        (JD.succeed ())
-        [ "channels", Discord.Id.toString channelId, "messages" ]
-        []
-        (JE.object [ ( "content", Discord.Markdown.toString content |> JE.string ) ])
+        { channelId = channelId, content = Discord.Markdown.toString content, replyTo = replyTo }
 
 
 {-| Create a reaction for the message.
 This endpoint requires the `READ_MESSAGE_HISTORY` permission to be present on the current user.
 Additionally, if nobody else has reacted to the message using this emoji, this endpoint requires the `ADD_REACTIONS` permission to be present on the current user.
 -}
-createReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task HttpError ()
+createReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : Emoji } -> Task HttpError ()
 createReaction authentication { channelId, messageId, emoji } =
     httpPut
         authentication
         (JD.succeed ())
-        [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId, "reactions", emoji, "@me" ]
+        [ "channels"
+        , Discord.Id.toString channelId
+        , "messages"
+        , Discord.Id.toString messageId
+        , "reactions"
+        , urlEncodeEmoji emoji
+        , "@me"
+        ]
         []
         (JE.object [])
 
 
 {-| Delete a reaction the current user has made for the message.
 -}
-deleteOwnReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task HttpError ()
+deleteOwnReaction : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : Emoji } -> Task HttpError ()
 deleteOwnReaction authentication { channelId, messageId, emoji } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId, "reactions", emoji, "@me" ]
+        [ "channels"
+        , Discord.Id.toString channelId
+        , "messages"
+        , Discord.Id.toString messageId
+        , "reactions"
+        , urlEncodeEmoji emoji
+        , "@me"
+        ]
         []
         (JE.object [])
 
@@ -241,25 +264,38 @@ This endpoint requires the `MANAGE_MESSAGES` permission to be present on the cur
 -}
 deleteUserReaction :
     Authentication
-    -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String, userId : Id UserId }
+    -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : Emoji, userId : Id UserId }
     -> Task HttpError ()
 deleteUserReaction authentication { channelId, messageId, emoji, userId } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId, "reactions", emoji, Discord.Id.toString userId ]
+        [ "channels"
+        , Discord.Id.toString channelId
+        , "messages"
+        , Discord.Id.toString messageId
+        , "reactions"
+        , urlEncodeEmoji emoji
+        , Discord.Id.toString userId
+        ]
         []
         (JE.object [])
 
 
 {-| Get a list of users that reacted with this emoji.
 -}
-getReactions : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String } -> Task HttpError ()
+getReactions : Authentication -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : Emoji } -> Task HttpError ()
 getReactions authentication { channelId, messageId, emoji } =
     httpGet
         authentication
         (JD.succeed ())
-        [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId, "reactions", emoji ]
+        [ "channels"
+        , Discord.Id.toString channelId
+        , "messages"
+        , Discord.Id.toString messageId
+        , "reactions"
+        , urlEncodeEmoji emoji
+        ]
         [ Url.Builder.int "limit" 100 ]
 
 
@@ -281,13 +317,19 @@ This endpoint requires the `MANAGE_MESSAGES` permission to be present on the cur
 -}
 deleteAllReactionsForEmoji :
     Authentication
-    -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : String }
+    -> { channelId : Id ChannelId, messageId : Id MessageId, emoji : Emoji }
     -> Task HttpError ()
 deleteAllReactionsForEmoji authentication { channelId, messageId, emoji } =
     httpDelete
         authentication
         (JD.succeed ())
-        [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId, "reactions", emoji ]
+        [ "channels"
+        , Discord.Id.toString channelId
+        , "messages"
+        , Discord.Id.toString messageId
+        , "reactions"
+        , urlEncodeEmoji emoji
+        ]
         []
         (JE.object [])
 
@@ -493,7 +535,7 @@ deletePinnedChannelMessage authentication { channelId, messageId } =
 
 {-| Returns a list of emojis for the given guild.
 -}
-listGuildEmojis : Authentication -> Id GuildId -> Task HttpError (List Emoji)
+listGuildEmojis : Authentication -> Id GuildId -> Task HttpError (List EmojiData)
 listGuildEmojis authentication guildId =
     httpGet
         authentication
@@ -504,7 +546,7 @@ listGuildEmojis authentication guildId =
 
 {-| Returns an emoji for the given guild and emoji IDs.
 -}
-getGuildEmojis : Authentication -> { guildId : Id GuildId, emojiId : Id EmojiId } -> Task HttpError Emoji
+getGuildEmojis : Authentication -> { guildId : Id GuildId, emojiId : Id Emoji } -> Task HttpError EmojiData
 getGuildEmojis authentication { guildId, emojiId } =
     httpGet
         authentication
@@ -525,7 +567,7 @@ Emojis and animated emojis have a maximum file size of 256kb.
 createGuildEmoji :
     Authentication
     -> { guildId : Id GuildId, emojiName : String, image : DataUri, roles : Roles }
-    -> Task HttpError Emoji
+    -> Task HttpError EmojiData
 createGuildEmoji authentication { guildId, emojiName, image, roles } =
     httpPost
         authentication
@@ -546,11 +588,11 @@ modifyGuildEmoji :
     Authentication
     ->
         { guildId : Id GuildId
-        , emojiId : Id EmojiId
+        , emojiId : Id Emoji
         , emojiName : Modify String
         , roles : Modify Roles
         }
-    -> Task HttpError Emoji
+    -> Task HttpError EmojiData
 modifyGuildEmoji authentication { guildId, emojiId, emojiName, roles } =
     httpPost
         authentication
@@ -578,7 +620,7 @@ modifyGuildEmoji authentication { guildId, emojiId, emojiName, roles } =
 
 {-| Delete the given emoji. Requires the `MANAGE_EMOJIS` permission.
 -}
-deleteGuildEmoji : Authentication -> { guildId : Id GuildId, emojiId : Id EmojiId } -> Task HttpError ()
+deleteGuildEmoji : Authentication -> { guildId : Id GuildId, emojiId : Id Emoji } -> Task HttpError ()
 deleteGuildEmoji authentication { guildId, emojiId } =
     httpDelete
         authentication
@@ -993,7 +1035,7 @@ imageIsAnimated (ImageHash hash) =
     String.startsWith "a_" hash
 
 
-customEmojiUrl : ImageCdnConfig (Choices Png Gif Never Never) -> Id EmojiId -> String
+customEmojiUrl : ImageCdnConfig (Choices Png Gif Never Never) -> Id Emoji -> String
 customEmojiUrl { size, imageType } emojiId =
     Url.Builder.crossOrigin
         discordCdnUrl
@@ -1726,7 +1768,7 @@ type alias Guild =
     , explicitContentFilter : Int
 
     -- roles field excluded
-    , emojis : List Emoji
+    , emojis : List EmojiData
     , features : List String
     , mfaLevel : Int
     , applicationId : Maybe (Id ApplicationId)
@@ -1789,7 +1831,7 @@ type alias GuildPreview =
     , icon : Maybe (ImageHash IconHash)
     , splash : Maybe (ImageHash SplashHash)
     , discoverySplash : Maybe (ImageHash DiscoverySplashHash)
-    , emojis : List Emoji
+    , emojis : List EmojiData
     , features : List String
     , approximateMemberCount : Int
     , approximatePresenceCount : Int
@@ -1800,11 +1842,11 @@ type alias GuildPreview =
 type alias Reaction =
     { count : Int
     , me : Bool
-    , emoji : Emoji
+    , emoji : EmojiData
     }
 
 
-type alias Emoji =
+type alias EmojiData =
     { type_ : EmojiType
     , roles : OptionalData (List (Id RoleId))
     , user : OptionalData User
@@ -1815,9 +1857,16 @@ type alias Emoji =
     }
 
 
-type EmojiType
+{-| Don't include any `:` characters when providing a custom emoji name.
+-}
+type Emoji
     = UnicodeEmoji String
-    | CustomEmoji { id : Id EmojiId, name : Maybe String }
+    | CustomEmoji { id : Id CustomEmojiId, name : String }
+
+
+type EmojiType
+    = UnicodeEmojiType String
+    | CustomEmojiType { id : Id CustomEmojiId, name : Maybe String }
 
 
 type Bits
@@ -2550,9 +2599,9 @@ decodeReaction =
         |> JD.andMap (JD.field "emoji" decodeEmoji)
 
 
-decodeEmoji : JD.Decoder Emoji
+decodeEmoji : JD.Decoder EmojiData
 decodeEmoji =
-    JD.succeed Emoji
+    JD.succeed EmojiData
         |> JD.andMap decodeEmojiType
         |> JD.andMap (decodeOptionalData "roles" (JD.list Discord.Id.decodeId))
         |> JD.andMap (decodeOptionalData "user" decodeUser)
@@ -2571,10 +2620,10 @@ decodeEmojiType =
             (\tuple ->
                 case tuple of
                     ( Just id, name ) ->
-                        CustomEmoji { id = id, name = name } |> JD.succeed
+                        CustomEmojiType { id = id, name = name } |> JD.succeed
 
                     ( Nothing, Just name ) ->
-                        UnicodeEmoji name |> JD.succeed
+                        UnicodeEmojiType name |> JD.succeed
 
                     ( Nothing, Nothing ) ->
                         JD.fail "Emoji must have id or name field."
@@ -2850,6 +2899,16 @@ encodeRoles roles =
 
         AllRoles ->
             JE.null
+
+
+urlEncodeEmoji : Emoji -> String
+urlEncodeEmoji emojiId =
+    case emojiId of
+        UnicodeEmoji emoji ->
+            Url.percentEncode emoji
+
+        CustomEmoji emoji ->
+            emoji.name ++ ":" ++ Discord.Id.toString emoji.id |> Url.percentEncode
 
 
 encodeModify : String -> (a -> JE.Value) -> Modify a -> List ( String, JE.Value )
