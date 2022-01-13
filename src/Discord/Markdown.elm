@@ -7,16 +7,18 @@ module Discord.Markdown exposing
     , boldStrikethrough
     , code
     , codeBlock
+    , customEmoji
     , italic
     , italicStrikethrough
     , ping
     , quote
+    , spoiler
     , strikethrough
     , text
     , toString
     )
 
-import Discord.Id exposing (Id, UserId)
+import Discord.Id exposing (CustomEmojiId, Id, UserId)
 
 
 type Quotable
@@ -36,6 +38,8 @@ type Markdown a
     | ItalicStrikethrough String
     | BoldItalicStrikethrough String
     | Ping (Id UserId)
+    | CustomEmoji String (Id CustomEmojiId)
+    | Spoiler (List (Markdown a))
 
 
 map : Markdown a -> Markdown b
@@ -44,8 +48,8 @@ map markdown =
         CodeBlock a b ->
             CodeBlock a b
 
-        Quote markdowns ->
-            List.map map markdowns |> Quote
+        Quote a ->
+            List.map map a |> Quote
 
         Code a ->
             Code a
@@ -76,6 +80,12 @@ map markdown =
 
         Ping a ->
             Ping a
+
+        CustomEmoji a b ->
+            CustomEmoji a b
+
+        Spoiler a ->
+            List.map map a |> Spoiler
 
 
 codeBlock : Maybe String -> String -> Markdown a
@@ -138,6 +148,18 @@ ping =
     Ping
 
 
+{-| Only write the inner text. Don't include the : characters (i.e. green\_square, not :green\_square:)
+-}
+customEmoji : String -> Id CustomEmojiId -> Markdown a
+customEmoji =
+    CustomEmoji
+
+
+spoiler : List (Markdown a) -> Markdown a
+spoiler =
+    Spoiler
+
+
 toString : List (Markdown a) -> String
 toString =
     List.map toStringHelper >> String.concat
@@ -181,6 +203,12 @@ toStringHelper markdown =
 
         Ping userId ->
             "<@!" ++ Discord.Id.toString userId ++ ">"
+
+        CustomEmoji name id ->
+            "<:" ++ name ++ ":" ++ Discord.Id.toString id ++ ">"
+
+        Spoiler content ->
+            "||" ++ (List.map toStringHelper content |> String.concat) ++ "||"
 
 
 escapeText : String -> String
