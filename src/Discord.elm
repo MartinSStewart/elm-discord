@@ -5,9 +5,9 @@ module Discord exposing
     , Emoji(..)
     , Guild, GuildMember, PartialGuild
     , Invite, InviteWithMetadata, InviteCode(..)
-    , username, nickname, Username, Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, Permissions
+    , username, nickname, Username(..), Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, Permissions
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, ImageHash, ImageSize(..), MessageUpdate, Modify(..), OpDispatchEvent(..), OptionalData(..), Roles(..), SequenceCounter, SessionId, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, ImageHash(..), ImageSize(..), MessageType(..), MessageUpdate, Modify(..), OpDispatchEvent(..), OptionalData(..), Roles(..), SequenceCounter(..), SessionId(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
     )
 
 {-| Useful Discord links:
@@ -187,11 +187,11 @@ See message formatting for more information on how to properly format messages.
 The maximum request size when sending a message is 8MB.
 
 -}
-createMessage : Authentication -> { channelId : Id ChannelId, content : String, replyTo : Maybe (Id MessageId) } -> Task HttpError ()
+createMessage : Authentication -> { channelId : Id ChannelId, content : String, replyTo : Maybe (Id MessageId) } -> Task HttpError Message
 createMessage authentication { channelId, content, replyTo } =
     httpPost
         authentication
-        (JD.succeed ())
+        decodeMessage
         [ "channels", Discord.Id.toString channelId, "messages" ]
         []
         (( "content", JE.string content )
@@ -212,7 +212,7 @@ createMessage authentication { channelId, content, replyTo } =
 
 {-| Same as `createMessage` but instead of taking a String, it takes a list of Markdown values.
 -}
-createMarkdownMessage : Authentication -> { channelId : Id ChannelId, content : List (Markdown ()), replyTo : Maybe (Id MessageId) } -> Task HttpError ()
+createMarkdownMessage : Authentication -> { channelId : Id ChannelId, content : List (Markdown ()), replyTo : Maybe (Id MessageId) } -> Task HttpError Message
 createMarkdownMessage authentication { channelId, content, replyTo } =
     createMessage
         authentication
