@@ -214,10 +214,14 @@ toStringHelper markdown =
 escapeText : String -> String
 escapeText =
     String.replace "\\" "\\\\"
-        >> String.replace "_" "\\_"
+        -- This needs to be disabled until url parsing works
+        -->> String.replace "_" "\\_"
         >> String.replace "*" "\\*"
         >> String.replace "`" "\\`"
         >> String.replace ">" "\\>"
         >> String.replace "@" "\\@"
         >> String.replace "~" "\\~"
-        >> String.replace ":" "\\:"
+
+
+
+-->> String.replace ":" "\\:"
