@@ -7,7 +7,7 @@ module Discord exposing
     , Invite, InviteWithMetadata, InviteCode(..)
     , username, nickname, Username(..), Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, Permissions
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildModifications, GuildPreview, ImageHash(..), ImageSize(..), MessageType(..), MessageUpdate, Modify(..), OpDispatchEvent(..), OptionalData(..), Roles(..), SequenceCounter(..), SessionId(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannel, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, teamIconUrl, triggerTypingIndicator, userAvatarUrl, usernameErrorToString, usernameToString
+    , Bits, ChannelInviteConfig, ChannelType(..), CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildMemberNoUser, GuildModifications, GuildPreview, ImageHash(..), ImageSize(..), MessageType(..), MessageUpdate, Model, Modify(..), Msg, OpDispatchEvent(..), OptionalData(..), OutMsg(..), Roles(..), SequenceCounter(..), SessionId(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, createdHandle, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannels, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, init, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, subscription, teamIconUrl, triggerTypingIndicator, update, userAvatarUrl, usernameErrorToString, usernameToString, websocketGatewayUrl
     )
 
 {-| Useful Discord links:
@@ -82,6 +82,7 @@ import Discord.Id exposing (AchievementId, ApplicationId, AttachmentId, ChannelI
 import Discord.Markdown exposing (Markdown)
 import Duration exposing (Duration, Seconds)
 import Http
+import Task exposing (Task)
 import Iso8601
 import Json.Decode as JD
 import Json.Decode.Extra as JD
@@ -89,7 +90,6 @@ import Json.Encode as JE
 import Json.Encode.Extra as JE
 import Quantity exposing (Quantity(..), Rate)
 import Set exposing (Set)
-import Task exposing (Task)
 import Time exposing (Posix(..))
 import Url exposing (Url)
 import Url.Builder exposing (QueryParameter)
@@ -735,8 +735,8 @@ deleteGuild authentication guildId =
 
 {-| Returns a list of guild channels.
 -}
-getGuildChannel : Authentication -> Id GuildId -> Task HttpError (List Channel)
-getGuildChannel authentication guildId =
+getGuildChannels : Authentication -> Id GuildId -> Task HttpError (List Channel)
+getGuildChannels authentication guildId =
     httpGet authentication (JD.list decodeChannel) [ "guilds", Discord.Id.toString guildId, "channels" ] []
 
 
@@ -1143,7 +1143,7 @@ discordCdnUrl =
     "https://cdn.discordapp.com"
 
 
-{-| Looks something like this `MTk4NjIyNDgzNDcxOTI1MjQ4.Cl2FMQ.ZnCjm1XVW7vRze4b7Cq4se7kKWs`.
+{-| Looks something like this `MTk4NjIyNDzNDcxOTI1MjQ4.Cl2FMQ.ZnCjm1XVWvRze4b7Cq4se7kKWs`.
 See the [Discord documentation](https://discord.com/developers/docs/reference#authentication) for more info.
 -}
 botToken : String -> Authentication
@@ -1806,8 +1806,18 @@ type Nickname
 
 
 type alias GuildMember =
-    { user : OptionalData User
+    { user : User
     , nickname : Maybe Nickname
+    , roles : List (Id RoleId)
+    , joinedAt : Time.Posix
+    , premiumSince : OptionalData (Maybe Time.Posix)
+    , deaf : Bool
+    , mute : Bool
+    }
+
+
+type alias GuildMemberNoUser =
+    { nickname : Maybe Nickname
     , roles : List (Id RoleId)
     , joinedAt : Time.Posix
     , premiumSince : OptionalData (Maybe Time.Posix)
@@ -2388,7 +2398,18 @@ errorCodeDict =
 decodeGuildMember : JD.Decoder GuildMember
 decodeGuildMember =
     JD.succeed GuildMember
-        |> JD.andMap (decodeOptionalData "user" decodeUser)
+        |> JD.andMap (JD.field "user" decodeUser)
+        |> JD.andMap (JD.field "nick" (JD.nullable decodeNickname))
+        |> JD.andMap (JD.field "roles" (JD.list Discord.Id.decodeId))
+        |> JD.andMap (JD.field "joined_at" Iso8601.decoder)
+        |> JD.andMap (decodeOptionalData "premium_since" (JD.nullable Iso8601.decoder))
+        |> JD.andMap (JD.field "deaf" JD.bool)
+        |> JD.andMap (JD.field "mute" JD.bool)
+
+
+decodeGuildMemberNoUser : JD.Decoder GuildMemberNoUser
+decodeGuildMemberNoUser =
+    JD.succeed GuildMemberNoUser
         |> JD.andMap (JD.field "nick" (JD.nullable decodeNickname))
         |> JD.andMap (JD.field "roles" (JD.list Discord.Id.decodeId))
         |> JD.andMap (JD.field "joined_at" Iso8601.decoder)
@@ -3250,3 +3271,175 @@ encodeGatewayCommand gatewayCommand =
 
         OpUpdatePresence ->
             JE.object []
+
+
+
+--- Gateway code
+
+
+type OutMsg connection
+    = CloseAndReopenHandle connection
+    | OpenHandle
+    | SendWebsocketData connection String
+    | SendWebsocketDataWithDelay connection Duration String
+    | UserCreatedMessage (Id GuildId) Message
+    | UserDeletedMessage (Id GuildId) (Id ChannelId) (Id MessageId)
+    | UserEditedMessage (Id GuildId) (Id ChannelId) (Id MessageId)
+
+
+type alias Model connection =
+    { websocketHandle : Maybe connection
+    , gatewayState : Maybe ( SessionId, SequenceCounter )
+    , heartbeatInterval : Maybe Duration
+    }
+
+
+init : Model connection
+init =
+    { websocketHandle = Nothing
+    , gatewayState = Nothing
+    , heartbeatInterval = Nothing
+    }
+
+
+type Msg
+    = GotWebsocketData String
+    | WebsocketClosed
+
+
+websocketGatewayUrl : String
+websocketGatewayUrl =
+    "wss://gateway.discord.gg/?v=8&encoding=json"
+
+
+createdHandle : connection -> Model connection -> Model connection
+createdHandle connection model =
+    { model | websocketHandle = Just connection }
+
+
+subscription : (connection -> (String -> Msg) -> Msg -> sub) -> Model connection -> Maybe sub
+subscription listen model =
+    case model.websocketHandle of
+        Just handle ->
+            listen handle GotWebsocketData WebsocketClosed |> Just
+
+        Nothing ->
+            Nothing
+
+
+update : Authentication -> Msg -> Model connection -> ( Model connection, List (OutMsg connection) )
+update authToken msg model =
+    case msg of
+        GotWebsocketData data ->
+            handleGateway authToken data model
+
+        WebsocketClosed ->
+            ( { model | websocketHandle = Nothing }, [ OpenHandle ] )
+
+
+handleGateway : Authentication -> String -> Model connection -> ( Model connection, List (OutMsg connection) )
+handleGateway authToken response model =
+    case ( model.websocketHandle, JD.decodeString decodeGatewayEvent response ) of
+        ( Just connection, Ok data ) ->
+            let
+                heartbeat : String
+                heartbeat =
+                    encodeGatewayCommand OpHeatbeat
+                        |> JE.encode 0
+            in
+            case data of
+                OpHello { heartbeatInterval } ->
+                    let
+                        command =
+                            (case model.gatewayState of
+                                Just ( discordSessionId, sequenceCounter ) ->
+                                    OpResume authToken discordSessionId sequenceCounter
+
+                                Nothing ->
+                                    OpIdentify authToken
+                            )
+                                |> encodeGatewayCommand
+                                |> JE.encode 0
+                    in
+                    ( { model | heartbeatInterval = Just heartbeatInterval }
+                    , [ SendWebsocketDataWithDelay connection heartbeatInterval heartbeat
+                      , SendWebsocketData connection command
+                      ]
+                    )
+
+                OpAck ->
+                    ( model
+                    , [ SendWebsocketDataWithDelay
+                            connection
+                            (Maybe.withDefault (Duration.seconds 60) model.heartbeatInterval)
+                            heartbeat
+                      ]
+                    )
+
+                OpDispatch sequenceCounter opDispatchEvent ->
+                    case opDispatchEvent of
+                        ReadyEvent discordSessionId ->
+                            ( { model | gatewayState = Just ( discordSessionId, sequenceCounter ) }, [] )
+
+                        ResumedEvent ->
+                            ( model, [] )
+
+                        MessageCreateEvent message ->
+                            case message.guildId of
+                                Included guildId ->
+                                    ( model, [ UserCreatedMessage guildId message ] )
+
+                                Missing ->
+                                    ( model, [] )
+
+                        MessageUpdateEvent messageUpdate ->
+                            ( model, [] )
+
+                        MessageDeleteEvent messageId channelId maybeGuildId ->
+                            case maybeGuildId of
+                                Included guildId ->
+                                    ( model
+                                    , [ UserDeletedMessage guildId channelId messageId ]
+                                    )
+
+                                Missing ->
+                                    ( model
+                                    , []
+                                    )
+
+                        MessageDeleteBulkEvent messageIds channelId maybeGuildId ->
+                            case maybeGuildId of
+                                Included guildId ->
+                                    ( model
+                                    , List.map
+                                        (UserDeletedMessage guildId channelId)
+                                        messageIds
+                                    )
+
+                                Missing ->
+                                    ( model, [] )
+
+                        GuildMemberAddEvent guildId guildMember ->
+                            ( model
+                            , []
+                            )
+
+                        GuildMemberRemoveEvent guildId user ->
+                            ( model
+                            , []
+                            )
+
+                        GuildMemberUpdateEvent _ ->
+                            ( model, [] )
+
+                OpReconnect ->
+                    ( model, [ CloseAndReopenHandle connection ] )
+
+                OpInvalidSession ->
+                    ( { model | gatewayState = Nothing }, [ CloseAndReopenHandle connection ] )
+
+        ( _, Err _ ) ->
+            ( model, [] )
+
+        ( Nothing, Ok _ ) ->
+            ( model, [] )
