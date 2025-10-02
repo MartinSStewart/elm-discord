@@ -5,9 +5,9 @@ module Discord exposing
     , Emoji(..)
     , Guild, GuildMember, PartialGuild
     , Invite, InviteWithMetadata, InviteCode(..)
-    , username, nickname, Username(..), Nickname, NameError(..), getCurrentUser, getCurrentUserGuilds, User, PartialUser, Permissions
+    , getCurrentUser, getCurrentUserGuilds, User, PartialUser, Permissions
     , ImageCdnConfig, Png(..), Jpg(..), WebP(..), Gif(..), Choices(..)
-    , Bits, ChannelInviteConfig, ChannelType(..), CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildMemberNoUser, GuildModifications, GuildPreview, ImageHash(..), ImageSize(..), MessageType(..), MessageUpdate, Model, Modify(..), Msg, OpDispatchEvent(..), OptionalData(..), OutMsg(..), Roles(..), SequenceCounter(..), SessionId(..), UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, createdHandle, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannels, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, init, leaveGuild, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, nicknameErrorToString, nicknameToString, noGuildModifications, subscription, teamIconUrl, triggerTypingIndicator, update, userAvatarUrl, usernameErrorToString, usernameToString, websocketGatewayUrl
+    , ActiveThreads, AutoArchiveDuration(..), Bits, Channel2, ChannelInviteConfig, ChannelType(..), CreateGuildCategoryChannel, CreateGuildTextChannel, CreateGuildVoiceChannel, DataUri(..), EmojiData, EmojiType(..), GatewayCloseEventCode(..), GatewayCommand(..), GatewayEvent(..), GuildMemberNoUser, GuildModifications, GuildPreview, ImageHash(..), ImageSize(..), Intents, MessageType(..), MessageUpdate, Model, Modify(..), Msg(..), Nickname, OpDispatchEvent(..), OptionalData(..), OutMsg(..), Overwrite, ReactionAdd, ReactionRemove, ReactionRemoveAll, ReactionRemoveEmoji, ReferencedMessage(..), RoleOrUserId(..), Roles(..), SequenceCounter(..), SessionId(..), ThreadMember, UserDiscriminator(..), achievementIconUrl, addPinnedChannelMessage, applicationAssetUrl, applicationIconUrl, createChannelInvite, createDmChannel, createGuildCategoryChannel, createGuildEmoji, createGuildTextChannel, createGuildVoiceChannel, createdHandle, customEmojiUrl, decodeGatewayEvent, defaultChannelInviteConfig, defaultUserAvatarUrl, deleteChannelPermission, deleteGuild, deleteGuildEmoji, deleteInvite, deletePinnedChannelMessage, editMessage, encodeGatewayCommand, gatewayCloseEventCodeFromInt, getChannelInvites, getGuild, getGuildChannels, getGuildEmojis, getGuildMember, getGuildPreview, getInvite, getPinnedMessages, getUser, guildBannerUrl, guildDiscoverySplashUrl, guildIconUrl, guildSplashUrl, imageIsAnimated, init, leaveGuild, listActiveThreads, listGuildEmojis, listGuildMembers, modifyCurrentUser, modifyGuild, modifyGuildEmoji, noGuildModifications, noIntents, startThreadFromMessage, stringToBinary, subscription, teamIconUrl, triggerTypingIndicator, update, userAvatarUrl, websocketGatewayUrl
     )
 
 {-| Useful Discord links:
@@ -56,7 +56,7 @@ For that reason it's probably a good idea to have a look at the source code and 
 
 # User
 
-@docs username, nickname, Username, Nickname, NameError, getCurrentUser, getCurrentUserGuilds, User, PartialUser, UserId, Permissions
+@docs getCurrentUser, getCurrentUserGuilds, User, PartialUser, UserId, Permissions
 
 
 # Voice
@@ -75,6 +75,7 @@ These are functions that return a url pointing to a particular image.
 
 -}
 
+import Array exposing (Array)
 import Binary
 import Bitwise
 import Dict exposing (Dict)
@@ -82,7 +83,6 @@ import Discord.Id exposing (AchievementId, ApplicationId, AttachmentId, ChannelI
 import Discord.Markdown exposing (Markdown)
 import Duration exposing (Duration, Seconds)
 import Http
-import Task exposing (Task)
 import Iso8601
 import Json.Decode as JD
 import Json.Decode.Extra as JD
@@ -90,6 +90,7 @@ import Json.Encode as JE
 import Json.Encode.Extra as JE
 import Quantity exposing (Quantity(..), Rate)
 import Set exposing (Set)
+import Task exposing (Task)
 import Time exposing (Posix(..))
 import Url exposing (Url)
 import Url.Builder exposing (QueryParameter)
@@ -343,8 +344,8 @@ editMessage authentication { channelId, messageId, content } =
         authentication
         (JD.succeed ())
         [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId ]
-        [ Url.Builder.string "content" content ]
-        (JE.object [])
+        []
+        (JE.object [ ( "content", JE.string content ) ])
 
 
 {-| Delete a message.
@@ -735,9 +736,9 @@ deleteGuild authentication guildId =
 
 {-| Returns a list of guild channels.
 -}
-getGuildChannels : Authentication -> Id GuildId -> Task HttpError (List Channel)
+getGuildChannels : Authentication -> Id GuildId -> Task HttpError (List Channel2)
 getGuildChannels authentication guildId =
-    httpGet authentication (JD.list decodeChannel) [ "guilds", Discord.Id.toString guildId, "channels" ] []
+    httpGet authentication (JD.list decodeChannel2) [ "guilds", Discord.Id.toString guildId, "channels" ] []
 
 
 {-| Create a new text channel for the guild. Requires the `MANAGE_CHANNELS` permission.
@@ -821,6 +822,8 @@ getGuildMember authentication guildId userId =
   - limit: Max number of members to return (1-1000)
   - after: The highest user id in the previous page
 
+<https://discord.com/developers/docs/resources/guild#list-guild-members>
+
 -}
 listGuildMembers :
     Authentication
@@ -840,6 +843,91 @@ listGuildMembers authentication { guildId, limit, after } =
                         []
                )
         )
+
+
+type AutoArchiveDuration
+    = ArchiveAfter60Minutes
+    | ArchiveAfter1440Minutes
+    | ArchiveAfter4320Minutes
+    | ArchiveAfter10080Minutes
+
+
+{-| <https://discord.com/developers/docs/resources/guild#list-active-guild-threads>
+-}
+listActiveThreads : Authentication -> Id GuildId -> Task HttpError ActiveThreads
+listActiveThreads authentication guildId =
+    httpGet
+        authentication
+        decodeActiveThreads
+        [ "guilds", Discord.Id.toString guildId, "threads", "active" ]
+        []
+
+
+{-| <https://discord.com/developers/docs/resources/channel#start-thread-from-message>
+-}
+startThreadFromMessage :
+    Authentication
+    ->
+        { channelId : Id ChannelId
+        , messageId : Id MessageId
+        , name : String
+        , autoArchiveDuration : OptionalData AutoArchiveDuration
+        , rateLimitPerUser : OptionalData (Quantity Int Seconds)
+        }
+    -> Task HttpError Channel
+startThreadFromMessage authentication { channelId, messageId, name, autoArchiveDuration, rateLimitPerUser } =
+    httpPost
+        authentication
+        decodeChannel
+        [ "channels", Discord.Id.toString channelId, "messages", Discord.Id.toString messageId, "threads" ]
+        []
+        (JE.object
+            ([ ( "name", JE.string name )
+             ]
+                ++ (case autoArchiveDuration of
+                        Included duration ->
+                            [ ( "auto_archive_duration"
+                              , case duration of
+                                    ArchiveAfter60Minutes ->
+                                        JE.int 60
+
+                                    ArchiveAfter1440Minutes ->
+                                        JE.int 1440
+
+                                    ArchiveAfter4320Minutes ->
+                                        JE.int 4320
+
+                                    ArchiveAfter10080Minutes ->
+                                        JE.int 10080
+                              )
+                            ]
+
+                        Missing ->
+                            []
+                   )
+                ++ (case rateLimitPerUser of
+                        Included duration ->
+                            [ ( "rate_limit_per_user", JE.int (Quantity.unwrap duration) ) ]
+
+                        Missing ->
+                            []
+                   )
+            )
+        )
+
+
+type alias ActiveThreads =
+    { threads : List Channel
+    , members : List ThreadMember
+    }
+
+
+type alias ThreadMember =
+    { threadId : Id ChannelId
+    , userId : Id UserId
+    , joinTimestamp : Time.Posix
+    , flags : Int
+    }
 
 
 
@@ -872,78 +960,6 @@ deleteInvite authentication (InviteCode inviteCode) =
 
 
 --- USER ENDPOINTS ---
-
-
-username : String -> Result NameError Username
-username usernameText =
-    if String.length usernameText < 2 then
-        Err NameTooShort
-
-    else if String.length usernameText > 32 then
-        Err NameTooLong
-
-    else if List.any (\substring -> String.contains substring usernameText) invalidNameSubstrings then
-        Err NameContainsInvalidSubstring
-
-    else if String.any (\char -> Set.member char invalidNameCharacters) usernameText then
-        Err NameContainsInvalidCharacters
-
-    else
-        String.trim usernameText |> Username |> Ok
-
-
-usernameToString : Username -> String
-usernameToString (Username username_) =
-    username_
-
-
-nickname : String -> Result NameError Nickname
-nickname nicknameText =
-    if String.length nicknameText < 1 then
-        Err NameTooShort
-
-    else if String.length nicknameText > 32 then
-        Err NameTooLong
-
-    else
-        String.trim nicknameText |> Nickname |> Ok
-
-
-nicknameToString : Nickname -> String
-nicknameToString (Nickname nickname_) =
-    nickname_
-
-
-usernameErrorToString : NameError -> String
-usernameErrorToString usernameError =
-    case usernameError of
-        NameTooShort ->
-            "Username is too short. Must be at least 2 characters long."
-
-        NameTooLong ->
-            "Username is too long. Must be 32 characters or shorter."
-
-        NameContainsInvalidCharacters ->
-            "Username contains invalid characters."
-
-        NameContainsInvalidSubstring ->
-            "Username contains an invalid substring."
-
-
-nicknameErrorToString : NameError -> String
-nicknameErrorToString nicknameError =
-    case nicknameError of
-        NameTooShort ->
-            "Nickname is too short. Must be at least 1 character long."
-
-        NameTooLong ->
-            "Nickname is too long. Must be 32 characters or shorter."
-
-        NameContainsInvalidCharacters ->
-            "Nickname contains invalid characters."
-
-        NameContainsInvalidSubstring ->
-            "Nickname contains an invalid substring."
 
 
 {-| Returns the user object of the requester's account.
@@ -982,7 +998,7 @@ createDmChannel authentication userId =
 -}
 modifyCurrentUser :
     Authentication
-    -> { username : Modify Username, avatar : Modify (Maybe DataUri) }
+    -> { username : Modify String, avatar : Modify (Maybe DataUri) }
     -> Task HttpError User
 modifyCurrentUser authentication modifications =
     httpPatch
@@ -991,7 +1007,7 @@ modifyCurrentUser authentication modifications =
         [ "users", "@me" ]
         []
         (JE.object
-            (encodeModify "username" encodeUsername modifications.username
+            (encodeModify "username" JE.string modifications.username
                 ++ encodeModify "avatar" (JE.maybe encodeDataUri) modifications.avatar
             )
         )
@@ -1135,7 +1151,7 @@ teamIconUrl { size, imageType } teamId teamIconHash =
 
 discordApiUrl : String
 discordApiUrl =
-    "https://discord.com/api/v6"
+    "https://discord.com/api/v10"
 
 
 discordCdnUrl : String
@@ -1351,16 +1367,6 @@ imageSizeQuery size =
 
         DefaultImageSize ->
             []
-
-
-invalidNameSubstrings : List String
-invalidNameSubstrings =
-    [ "discordtag", "everyone", "here", "```" ]
-
-
-invalidNameCharacters : Set Char
-invalidNameCharacters =
-    Set.fromList [ '@', '#', ':' ]
 
 
 httpErrorToString : HttpError -> String
@@ -1807,7 +1813,7 @@ type Nickname
 
 type alias GuildMember =
     { user : User
-    , nickname : Maybe Nickname
+    , nickname : Maybe String
     , roles : List (Id RoleId)
     , joinedAt : Time.Posix
     , premiumSince : OptionalData (Maybe Time.Posix)
@@ -1817,7 +1823,7 @@ type alias GuildMember =
 
 
 type alias GuildMemberNoUser =
-    { nickname : Maybe Nickname
+    { nickname : Maybe String
     , roles : List (Id RoleId)
     , joinedAt : Time.Posix
     , premiumSince : OptionalData (Maybe Time.Posix)
@@ -1906,6 +1912,116 @@ type alias Channel =
     }
 
 
+type alias Channel2 =
+    { id : Id ChannelId
+    , type_ : ChannelType
+    , guildId : OptionalData (Id GuildId)
+    , position : OptionalData Int
+    , name : OptionalData String
+    , topic : OptionalData (Maybe String)
+    , nsfw : OptionalData Bool
+    , lastMessageId : OptionalData (Maybe (Id MessageId))
+    , bitrate : OptionalData (Quantity Int (Rate Bits Seconds))
+    , parentId : OptionalData (Maybe (Id ChannelId))
+    , permissionOverwrites : List Overwrite
+    }
+
+
+type RoleOrUserId
+    = RoleOrUserId_RoleId (Id RoleId)
+    | RoleOrUserId_UserId (Id UserId)
+
+
+type alias Overwrite =
+    { id : RoleOrUserId
+    , allow : Permissions
+    , deny : Permissions
+    }
+
+
+noPermissions : Permissions
+noPermissions =
+    { createInstantInvite = False
+    , kickMembers = False
+    , banMembers = False
+    , administrator = False
+    , manageChannels = False
+    , manageGuild = False
+    , addReaction = False
+    , viewAuditLog = False
+    , prioritySpeaker = False
+    , stream = False
+    , viewChannel = False
+    , sendMessages = False
+    , sentTextToSpeechMessages = False
+    , manageMessages = False
+    , embedLinks = False
+    , attachFiles = False
+    , readMessageHistory = False
+    , mentionEveryone = False
+    , useExternalEmojis = False
+    , viewGuildInsights = False
+    , connect = False
+    , speak = False
+    , muteMembers = False
+    , deafenMembers = False
+    , moveMembers = False
+    , useVoiceActivityDetection = False
+    , changeNickname = False
+    , manageNicknames = False
+    , manageRoles = False
+    , manageWebhooks = False
+    , manageGuildExpressions = False
+    , useApplicationCommands = False
+    , requestToSpeak = False
+    , manageEvents = False
+    , manageThreads = False
+    , createPublicThreads = False
+    , createPrivateThreads = False
+    , useExternalStickers = False
+    , sendMessagesInThreads = False
+    , useEmbeddedActivities = False
+    , moderateMembers = False
+    , viewCreatorMontetizationAnalytics = False
+    , useSoundboard = False
+    , createGuildExpressions = False
+    , createEvents = False
+    , useExternalSounds = False
+    , sendVoiceMessages = False
+    , sendPolls = False
+    , useExternalApps = False
+    }
+
+
+decodeOverwrite : JD.Decoder Overwrite
+decodeOverwrite =
+    JD.map4
+        (\id type_ allow deny ->
+            case type_ of
+                0 ->
+                    { id = RoleOrUserId_RoleId id
+                    , allow = allow
+                    , deny = deny
+                    }
+                        |> JD.succeed
+
+                1 ->
+                    { id = RoleOrUserId_UserId (Discord.Id.toUInt64 id |> Discord.Id.fromUInt64)
+                    , allow = allow
+                    , deny = deny
+                    }
+                        |> JD.succeed
+
+                _ ->
+                    JD.fail ("Invalid overwrite object type. Expected a 0 or a 1 but got " ++ String.fromInt type_)
+        )
+        (JD.field "id" Discord.Id.decodeId)
+        (JD.field "type" JD.int)
+        (JD.optionalNullableField "allow" decodePermissions |> JD.map (Maybe.withDefault noPermissions))
+        (JD.optionalNullableField "deny" decodePermissions |> JD.map (Maybe.withDefault noPermissions))
+        |> JD.andThen identity
+
+
 type alias PartialChannel =
     { id : Id ChannelId
     , name : String
@@ -1919,8 +2035,14 @@ type ChannelType
     | GuildVoice
     | GroupDirectMessage
     | GuildCategory
-    | GuildNews
-    | GuildStore
+    | GuildAnnouncement
+    | AnnouncementThread
+    | PublicThread
+    | PrivateThread
+    | GuildStageVoice
+    | GuildDirectory
+    | GuildForum
+    | GuildMedia
 
 
 type alias Invite =
@@ -1968,37 +2090,55 @@ type alias ChannelInviteConfig =
 
 
 type alias Permissions =
-    { createInstantInvite : Bool
-    , kickMembers : Bool
-    , banMembers : Bool
-    , administrator : Bool
-    , manageChannels : Bool
-    , manageGuild : Bool
-    , addReaction : Bool
-    , viewAuditLog : Bool
-    , prioritySpeaker : Bool
-    , stream : Bool
-    , viewChannel : Bool
-    , sendMessages : Bool
-    , sentTextToSpeechMessages : Bool
-    , manageMessages : Bool
-    , embedLinks : Bool
-    , attachFiles : Bool
-    , readMessageHistory : Bool
-    , mentionEveryone : Bool
-    , useExternalEmojis : Bool
-    , viewGuildInsights : Bool
-    , connect : Bool
-    , speak : Bool
-    , muteMembers : Bool
-    , deafenMembers : Bool
-    , moveMembers : Bool
-    , useVoiceActivityDetection : Bool
-    , changeNickname : Bool
-    , manageNicknames : Bool
-    , manageRoles : Bool
-    , manageWebhooks : Bool
-    , manageEmojis : Bool
+    { createInstantInvite : Bool --0
+    , kickMembers : Bool -- 1
+    , banMembers : Bool -- 2
+    , administrator : Bool -- 3
+    , manageChannels : Bool -- 4
+    , manageGuild : Bool -- 5
+    , addReaction : Bool -- 6
+    , viewAuditLog : Bool -- 7
+    , prioritySpeaker : Bool -- 8
+    , stream : Bool -- 9
+    , viewChannel : Bool -- 10
+    , sendMessages : Bool -- 11
+    , sentTextToSpeechMessages : Bool -- 12
+    , manageMessages : Bool -- 13
+    , embedLinks : Bool -- 14
+    , attachFiles : Bool -- 15
+    , readMessageHistory : Bool -- 16
+    , mentionEveryone : Bool -- 17
+    , useExternalEmojis : Bool -- 18
+    , viewGuildInsights : Bool -- 19
+    , connect : Bool -- 20
+    , speak : Bool -- 21
+    , muteMembers : Bool -- 22
+    , deafenMembers : Bool -- 23
+    , moveMembers : Bool -- 24
+    , useVoiceActivityDetection : Bool -- 25
+    , changeNickname : Bool -- 26
+    , manageNicknames : Bool -- 27
+    , manageRoles : Bool -- 28
+    , manageWebhooks : Bool -- 29
+    , manageGuildExpressions : Bool -- 30
+    , useApplicationCommands : Bool -- 31
+    , requestToSpeak : Bool -- 32
+    , manageEvents : Bool -- 33
+    , manageThreads : Bool -- 34
+    , createPublicThreads : Bool -- 35
+    , createPrivateThreads : Bool -- 36
+    , useExternalStickers : Bool -- 37
+    , sendMessagesInThreads : Bool -- 38
+    , useEmbeddedActivities : Bool -- 39
+    , moderateMembers : Bool -- 40
+    , viewCreatorMontetizationAnalytics : Bool -- 41
+    , useSoundboard : Bool -- 42
+    , createGuildExpressions : Bool -- 43
+    , createEvents : Bool -- 44
+    , useExternalSounds : Bool -- 45
+    , sendVoiceMessages : Bool -- 46
+    , sendPolls : Bool -- 49
+    , useExternalApps : Bool -- 50
     }
 
 
@@ -2013,20 +2153,9 @@ type alias Attachment =
     }
 
 
-type Username
-    = Username String
-
-
-type NameError
-    = NameTooShort
-    | NameTooLong
-    | NameContainsInvalidCharacters
-    | NameContainsInvalidSubstring
-
-
 type alias User =
     { id : Id UserId
-    , username : Username
+    , username : String
     , discriminator : UserDiscriminator
     , avatar : Maybe (ImageHash AvatarHash)
     , bot : OptionalData Bool
@@ -2043,7 +2172,7 @@ type alias User =
 
 type alias PartialUser =
     { id : Id UserId
-    , username : Username
+    , username : String
     , avatar : Maybe (ImageHash AvatarHash)
     , discriminator : UserDiscriminator
     }
@@ -2132,7 +2261,16 @@ type alias Message =
     -- application field is excluded
     -- message_reference field is excluded
     , flags : OptionalData Int
+    , referencedMessage : ReferencedMessage
     }
+
+
+{-| A message that is being referenced (probably because a user is replying to a message)
+-}
+type ReferencedMessage
+    = Referenced Message
+    | ReferenceDeleted
+    | NoReference
 
 
 type MessageType
@@ -2289,6 +2427,24 @@ type alias CreateGuildCategoryChannel =
 --- DECODERS ---
 
 
+decodeActiveThreads : JD.Decoder ActiveThreads
+decodeActiveThreads =
+    JD.map2
+        ActiveThreads
+        (JD.field "threads" (JD.list decodeChannel))
+        (JD.field "members" (JD.list decodeThreadMember))
+
+
+decodeThreadMember : JD.Decoder ThreadMember
+decodeThreadMember =
+    JD.map4
+        ThreadMember
+        (JD.field "id" Discord.Id.decodeId)
+        (JD.field "user_id" Discord.Id.decodeId)
+        (JD.field "join_timestamp" Iso8601.decoder)
+        (JD.field "flags" JD.int)
+
+
 decodeSessionId : JD.Decoder SessionId
 decodeSessionId =
     JD.string
@@ -2399,7 +2555,7 @@ decodeGuildMember : JD.Decoder GuildMember
 decodeGuildMember =
     JD.succeed GuildMember
         |> JD.andMap (JD.field "user" decodeUser)
-        |> JD.andMap (JD.field "nick" (JD.nullable decodeNickname))
+        |> JD.andMap (JD.field "nick" (JD.nullable JD.string))
         |> JD.andMap (JD.field "roles" (JD.list Discord.Id.decodeId))
         |> JD.andMap (JD.field "joined_at" Iso8601.decoder)
         |> JD.andMap (decodeOptionalData "premium_since" (JD.nullable Iso8601.decoder))
@@ -2410,7 +2566,7 @@ decodeGuildMember =
 decodeGuildMemberNoUser : JD.Decoder GuildMemberNoUser
 decodeGuildMemberNoUser =
     JD.succeed GuildMemberNoUser
-        |> JD.andMap (JD.field "nick" (JD.nullable decodeNickname))
+        |> JD.andMap (JD.field "nick" (JD.nullable JD.string))
         |> JD.andMap (JD.field "roles" (JD.list Discord.Id.decodeId))
         |> JD.andMap (JD.field "joined_at" Iso8601.decoder)
         |> JD.andMap (decodeOptionalData "premium_since" (JD.nullable Iso8601.decoder))
@@ -2456,6 +2612,23 @@ decodeMessage =
         |> JD.andMap (decodeOptionalData "webhook_id" Discord.Id.decodeId)
         |> JD.andMap (JD.field "type" decodeMessageType)
         |> JD.andMap (decodeOptionalData "flags" JD.int)
+        |> JD.andMap
+            (JD.optionalField "referenced_message" (JD.nullable (JD.lazy (\() -> decodeMessage)))
+                |> JD.map
+                    (\maybe ->
+                        case maybe of
+                            Just maybe2 ->
+                                case maybe2 of
+                                    Just message ->
+                                        Referenced message
+
+                                    Nothing ->
+                                        ReferenceDeleted
+
+                            Nothing ->
+                                NoReference
+                    )
+            )
 
 
 decodeMessageType : JD.Decoder MessageType
@@ -2539,7 +2712,7 @@ decodeUser : JD.Decoder User
 decodeUser =
     JD.succeed User
         |> JD.andMap (JD.field "id" Discord.Id.decodeId)
-        |> JD.andMap (JD.field "username" decodeUsername)
+        |> JD.andMap (JD.field "username" JD.string)
         |> JD.andMap (JD.field "discriminator" decodeDiscriminator)
         |> JD.andMap (JD.field "avatar" (JD.nullable decodeHash))
         |> JD.andMap (decodeOptionalData "bot" JD.bool)
@@ -2551,34 +2724,6 @@ decodeUser =
         |> JD.andMap (decodeOptionalData "flags" JD.int)
         |> JD.andMap (decodeOptionalData "premium_type" JD.int)
         |> JD.andMap (decodeOptionalData "public_flags" JD.int)
-
-
-decodeUsername : JD.Decoder Username
-decodeUsername =
-    JD.andThen
-        (\name ->
-            case username name of
-                Ok username_ ->
-                    JD.succeed username_
-
-                Err error ->
-                    JD.fail ("Invalid username. " ++ usernameErrorToString error)
-        )
-        JD.string
-
-
-decodeNickname : JD.Decoder Nickname
-decodeNickname =
-    JD.andThen
-        (\name ->
-            case nickname name of
-                Ok nickname_ ->
-                    JD.succeed nickname_
-
-                Err error ->
-                    JD.fail ("Invalid username. " ++ nicknameErrorToString error)
-        )
-        JD.string
 
 
 decodeAttachment : JD.Decoder Attachment
@@ -2708,16 +2853,109 @@ decodeGuild =
         |> JD.andMap (decodeOptionalData "approximate_presence_count" JD.int)
 
 
+exp : Int
+exp =
+    32
+
+
+base : Int
+base =
+    2 ^ exp
+
+
+stringToBinary : String -> Array Bool
+stringToBinary str =
+    String.foldl
+        (\c acc ->
+            case acc of
+                Nothing ->
+                    Nothing
+
+                Just list ->
+                    case charToInt c of
+                        Nothing ->
+                            Nothing
+
+                        Just n ->
+                            Just (normalize n (List.map (\k -> k * 10) list))
+        )
+        (Just [])
+        str
+        |> Maybe.map
+            (\list ->
+                list
+                    |> List.concatMap
+                        (\b ->
+                            b
+                                |> intToBinaryListFixed exp
+                                |> List.reverse
+                        )
+                    |> Array.fromList
+            )
+        |> Maybe.withDefault Array.empty
+
+
+intToBinaryListFixed : Int -> Int -> List Bool
+intToBinaryListFixed len i =
+    let
+        go rl r acc =
+            if rl == 0 then
+                acc
+
+            else
+                go (rl - 1) (r // 2) ((modBy 2 r == 1) :: acc)
+    in
+    go len i []
+
+
+normalize : Int -> List Int -> List Int
+normalize carry list =
+    case list of
+        [] ->
+            if carry == 0 then
+                []
+
+            else
+                [ carry ]
+
+        head :: tail ->
+            let
+                newHead : Int
+                newHead =
+                    head + carry
+            in
+            if newHead >= base then
+                modBy base newHead :: normalize (newHead // base) tail
+
+            else
+                newHead :: normalize 0 tail
+
+
+charToInt : Char -> Maybe Int
+charToInt c =
+    let
+        n =
+            Char.toCode c - Char.toCode '0'
+    in
+    if n >= 0 && n <= 9 then
+        Just n
+
+    else
+        Nothing
+
+
 decodePermissions : JD.Decoder Permissions
 decodePermissions =
     JD.map
         (\value ->
             let
+                permissions : Array Bool
                 permissions =
-                    value |> List.singleton |> Binary.fromIntegers |> Binary.toBooleans
+                    stringToBinary value
 
+                getPermission : Int -> Bool
                 getPermission position =
-                    List.drop position permissions |> List.head |> Maybe.withDefault False
+                    Array.get position permissions |> Maybe.withDefault False
             in
             Permissions
                 (getPermission 0)
@@ -2751,8 +2989,27 @@ decodePermissions =
                 (getPermission 28)
                 (getPermission 29)
                 (getPermission 30)
+                (getPermission 31)
+                (getPermission 32)
+                (getPermission 33)
+                (getPermission 34)
+                (getPermission 35)
+                (getPermission 36)
+                (getPermission 37)
+                (getPermission 38)
+                (getPermission 39)
+                (getPermission 40)
+                (getPermission 41)
+                (getPermission 42)
+                (getPermission 43)
+                (getPermission 44)
+                (getPermission 45)
+                (getPermission 46)
+                -- This isn't a mistake, discord skips 47 and 48
+                (getPermission 49)
+                (getPermission 50)
         )
-        JD.int
+        JD.string
 
 
 decodeChannel : JD.Decoder Channel
@@ -2777,6 +3034,22 @@ decodeChannel =
         |> JD.andMap (decodeOptionalData "last_pin_timestamp" Iso8601.decoder)
 
 
+decodeChannel2 : JD.Decoder Channel2
+decodeChannel2 =
+    JD.succeed Channel2
+        |> JD.andMap (JD.field "id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "type" decodeChannelType)
+        |> JD.andMap (decodeOptionalData "guild_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "position" JD.int)
+        |> JD.andMap (decodeOptionalData "name" JD.string)
+        |> JD.andMap (decodeOptionalData "topic" (JD.nullable JD.string))
+        |> JD.andMap (decodeOptionalData "nsfw" JD.bool)
+        |> JD.andMap (decodeOptionalData "last_message_id" (JD.nullable Discord.Id.decodeId))
+        |> JD.andMap (decodeOptionalData "bitrate" (JD.map Quantity JD.int))
+        |> JD.andMap (decodeOptionalData "parent_id" (JD.nullable Discord.Id.decodeId))
+        |> JD.andMap (JD.field "permission_overwrites" (JD.list decodeOverwrite))
+
+
 decodeChannelType : JD.Decoder ChannelType
 decodeChannelType =
     JD.andThen
@@ -2798,13 +3071,31 @@ decodeChannelType =
                     JD.succeed GuildCategory
 
                 5 ->
-                    JD.succeed GuildNews
+                    JD.succeed GuildAnnouncement
 
-                6 ->
-                    JD.succeed GuildStore
+                10 ->
+                    JD.succeed AnnouncementThread
+
+                11 ->
+                    JD.succeed PublicThread
+
+                12 ->
+                    JD.succeed PrivateThread
+
+                13 ->
+                    JD.succeed GuildStageVoice
+
+                14 ->
+                    JD.succeed GuildDirectory
+
+                15 ->
+                    JD.succeed GuildForum
+
+                16 ->
+                    JD.succeed GuildMedia
 
                 _ ->
-                    JD.fail "Invalid channel type."
+                    JD.fail ("Invalid channel type: " ++ String.fromInt value)
         )
         JD.int
 
@@ -2869,7 +3160,7 @@ decodePartialUser : JD.Decoder PartialUser
 decodePartialUser =
     JD.map4 PartialUser
         (JD.field "id" Discord.Id.decodeId)
-        (JD.field "username" decodeUsername)
+        (JD.field "username" JD.string)
         (JD.field "avatar" (JD.nullable decodeHash))
         (JD.field "discriminator" decodeDiscriminator)
 
@@ -2942,11 +3233,6 @@ encodeModify fieldName encoder modify =
             []
 
 
-encodeUsername : Username -> JE.Value
-encodeUsername =
-    usernameToString >> JE.string
-
-
 encodeDataUri : DataUri -> JE.Value
 encodeDataUri (DataUri dataUri) =
     JE.string dataUri
@@ -2984,7 +3270,10 @@ decodeDispatchEvent eventName =
             JD.field "d" (JD.succeed ResumedEvent)
 
         "MESSAGE_CREATE" ->
-            JD.field "d" decodeMessage |> JD.map MessageCreateEvent
+            JD.map2
+                MessageCreateEvent
+                (JD.at [ "d", "channel_type" ] decodeChannelType)
+                (JD.field "d" decodeMessage)
 
         "MESSAGE_UPDATE" ->
             JD.field "d" decodeMessageUpdate |> JD.map MessageUpdateEvent
@@ -3022,6 +3311,21 @@ decodeDispatchEvent eventName =
         "GUILD_MEMBER_UPDATE" ->
             JD.field "d" decodeGuildMemberUpdate |> JD.map GuildMemberUpdateEvent
 
+        "THREAD_CREATE" ->
+            JD.field "d" decodeChannel |> JD.map ThreadCreatedOrUserAddedToThreadEvent
+
+        "MESSAGE_REACTION_ADD" ->
+            JD.field "d" decodeReactionAdd |> JD.map MessageReactionAdd
+
+        "MESSAGE_REACTION_REMOVE" ->
+            JD.field "d" decodeReactionRemove |> JD.map MessageReactionRemove
+
+        "MESSAGE_REACTION_REMOVE_ALL" ->
+            JD.field "d" decodeReactionRemoveAll |> JD.map MessageReactionRemoveAll
+
+        "MESSAGE_REACTION_REMOVE_EMOJI" ->
+            JD.field "d" decodeReactionRemoveEmoji |> JD.map MessageReactionRemoveEmoji
+
         _ ->
             JD.fail <| "Invalid event name: " ++ eventName
 
@@ -3030,6 +3334,9 @@ type alias MessageUpdate =
     { id : Id MessageId
     , channelId : Id ChannelId
     , guildId : Id GuildId
+    , author : User
+    , content : String
+    , timestamp : Time.Posix
     }
 
 
@@ -3039,6 +3346,9 @@ decodeMessageUpdate =
         |> JD.andMap (JD.field "id" Discord.Id.decodeId)
         |> JD.andMap (JD.field "channel_id" Discord.Id.decodeId)
         |> JD.andMap (JD.field "guild_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "author" decodeUser)
+        |> JD.andMap (JD.field "content" JD.string)
+        |> JD.andMap (JD.field "timestamp" Iso8601.decoder)
 
 
 decodeGatewayEvent : JD.Decoder GatewayEvent
@@ -3082,7 +3392,7 @@ decodeGatewayEvent =
 
 
 type GatewayCommand
-    = OpIdentify Authentication
+    = OpIdentify Authentication Intents
     | OpResume Authentication SessionId SequenceCounter
     | OpHeatbeat
     | OpRequestGuildMembers
@@ -3101,13 +3411,100 @@ type GatewayEvent
 type OpDispatchEvent
     = ReadyEvent SessionId
     | ResumedEvent
-    | MessageCreateEvent Message
+    | MessageCreateEvent ChannelType Message
     | MessageUpdateEvent MessageUpdate
     | MessageDeleteEvent (Id MessageId) (Id ChannelId) (OptionalData (Id GuildId))
     | MessageDeleteBulkEvent (List (Id MessageId)) (Id ChannelId) (OptionalData (Id GuildId))
     | GuildMemberAddEvent (Id GuildId) GuildMember
     | GuildMemberRemoveEvent (Id GuildId) User
     | GuildMemberUpdateEvent GuildMemberUpdate
+    | ThreadCreatedOrUserAddedToThreadEvent Channel
+    | MessageReactionAdd ReactionAdd
+    | MessageReactionRemove ReactionRemove
+    | MessageReactionRemoveAll ReactionRemoveAll
+    | MessageReactionRemoveEmoji ReactionRemoveEmoji
+
+
+type alias ReactionAdd =
+    { userId : Id UserId
+    , channelId : Id ChannelId
+    , messageId : Id MessageId
+    , guildId : OptionalData (Id GuildId)
+    , member : OptionalData GuildMember
+    , emoji : EmojiData
+    , messageAuthorId : OptionalData (Id UserId)
+    , burst : Bool
+    , burstColors : OptionalData (List String)
+    }
+
+
+decodeReactionAdd : JD.Decoder ReactionAdd
+decodeReactionAdd =
+    JD.succeed ReactionAdd
+        |> JD.andMap (JD.field "user_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "channel_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "message_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "guild_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "member" decodeGuildMember)
+        |> JD.andMap (JD.field "emoji" decodeEmoji)
+        |> JD.andMap (decodeOptionalData "message_author_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "burst" JD.bool)
+        |> JD.andMap (decodeOptionalData "burst_colors" (JD.list JD.string))
+
+
+type alias ReactionRemove =
+    { userId : Id UserId
+    , channelId : Id ChannelId
+    , messageId : Id MessageId
+    , guildId : OptionalData (Id GuildId)
+    , member : OptionalData GuildMember
+    , emoji : EmojiData
+    , burst : Bool
+    }
+
+
+decodeReactionRemove : JD.Decoder ReactionRemove
+decodeReactionRemove =
+    JD.succeed ReactionRemove
+        |> JD.andMap (JD.field "user_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "channel_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "message_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "guild_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "member" decodeGuildMember)
+        |> JD.andMap (JD.field "emoji" decodeEmoji)
+        |> JD.andMap (JD.field "burst" JD.bool)
+
+
+type alias ReactionRemoveAll =
+    { channelId : Id ChannelId
+    , messageId : Id MessageId
+    , guildId : OptionalData (Id GuildId)
+    }
+
+
+decodeReactionRemoveAll : JD.Decoder ReactionRemoveAll
+decodeReactionRemoveAll =
+    JD.succeed ReactionRemoveAll
+        |> JD.andMap (JD.field "channel_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "message_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "guild_id" Discord.Id.decodeId)
+
+
+type alias ReactionRemoveEmoji =
+    { channelId : Id ChannelId
+    , guildId : OptionalData (Id GuildId)
+    , messageId : Id MessageId
+    , emoji : EmojiData
+    }
+
+
+decodeReactionRemoveEmoji : JD.Decoder ReactionRemoveEmoji
+decodeReactionRemoveEmoji =
+    JD.succeed ReactionRemoveEmoji
+        |> JD.andMap (JD.field "channel_id" Discord.Id.decodeId)
+        |> JD.andMap (decodeOptionalData "guild_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "message_id" Discord.Id.decodeId)
+        |> JD.andMap (JD.field "emoji" decodeEmoji)
 
 
 type GatewayCloseEventCode
@@ -3180,7 +3577,7 @@ type alias GuildMemberUpdate =
     { guildId : Id GuildId
     , roles : List (Id RoleId)
     , user : User
-    , nickname : OptionalData (Maybe Nickname)
+    , nickname : OptionalData (Maybe String)
     , joinedAt : Time.Posix
     , premiumSince : OptionalData (Maybe Time.Posix)
     , deaf : OptionalData Bool
@@ -3195,7 +3592,7 @@ decodeGuildMemberUpdate =
         |> JD.andMap (JD.field "guild_id" Discord.Id.decodeId)
         |> JD.andMap (JD.field "roles" (JD.list Discord.Id.decodeId))
         |> JD.andMap (JD.field "user" decodeUser)
-        |> JD.andMap (decodeOptionalData "nick" (JD.nullable decodeNickname))
+        |> JD.andMap (decodeOptionalData "nick" (JD.nullable JD.string))
         |> JD.andMap (JD.field "joined_at" Iso8601.decoder)
         |> JD.andMap (decodeOptionalData "premium_since" (JD.nullable Iso8601.decoder))
         |> JD.andMap (decodeOptionalData "deaf" JD.bool)
@@ -3203,10 +3600,95 @@ decodeGuildMemberUpdate =
         |> JD.andMap (decodeOptionalData "pending" JD.bool)
 
 
+type alias Intents =
+    { guild : Bool
+    , guildMembers : Bool
+    , guildModeration : Bool
+    , guildExpressions : Bool
+    , guildIntegrations : Bool
+    , guildWebhooks : Bool
+    , guildInvites : Bool
+    , guildVoiceStates : Bool
+    , guildPresences : Bool
+    , guildMessages : Bool
+    , guildMessageReactions : Bool
+    , guildMessageTyping : Bool
+    , directMessages : Bool
+    , directMessageReactions : Bool
+    , directMessageTyping : Bool
+    , messageContent : Bool
+    , guildScheduledEvents : Bool
+    , autoModerationConfiguration : Bool
+    , autoModerationExecution : Bool
+    , guildMessagePolls : Bool
+    , directMessagePolls : Bool
+    }
+
+
+noIntents : Intents
+noIntents =
+    { guild = False
+    , guildMembers = False
+    , guildModeration = False
+    , guildExpressions = False
+    , guildIntegrations = False
+    , guildWebhooks = False
+    , guildInvites = False
+    , guildVoiceStates = False
+    , guildPresences = False
+    , guildMessages = False
+    , guildMessageReactions = False
+    , guildMessageTyping = False
+    , directMessages = False
+    , directMessageReactions = False
+    , directMessageTyping = False
+    , messageContent = False
+    , guildScheduledEvents = False
+    , autoModerationConfiguration = False
+    , autoModerationExecution = False
+    , guildMessagePolls = False
+    , directMessagePolls = False
+    }
+
+
+encodeIntents : Intents -> JE.Value
+encodeIntents intents =
+    let
+        setBit position bool previousValue =
+            if bool then
+                Bitwise.shiftLeftBy position 1 |> Bitwise.or previousValue
+
+            else
+                previousValue
+    in
+    setBit 0 intents.guild 0
+        |> setBit 1 intents.guildMembers
+        |> setBit 2 intents.guildModeration
+        |> setBit 3 intents.guildExpressions
+        |> setBit 4 intents.guildIntegrations
+        |> setBit 5 intents.guildWebhooks
+        |> setBit 6 intents.guildInvites
+        |> setBit 7 intents.guildVoiceStates
+        |> setBit 8 intents.guildPresences
+        |> setBit 9 intents.guildMessages
+        |> setBit 10 intents.guildMessageReactions
+        |> setBit 11 intents.guildMessageTyping
+        |> setBit 12 intents.directMessages
+        |> setBit 13 intents.directMessageReactions
+        |> setBit 14 intents.directMessageTyping
+        |> setBit 15 intents.messageContent
+        |> setBit 16 intents.guildScheduledEvents
+        |> setBit 20 intents.autoModerationConfiguration
+        |> setBit 21 intents.autoModerationExecution
+        |> setBit 24 intents.guildMessagePolls
+        |> setBit 25 intents.directMessagePolls
+        |> JE.int
+
+
 encodeGatewayCommand : GatewayCommand -> JE.Value
 encodeGatewayCommand gatewayCommand =
     case gatewayCommand of
-        OpIdentify authToken ->
+        OpIdentify authToken intents ->
             JE.object
                 [ ( "op", JE.int 2 )
                 , ( "d"
@@ -3229,11 +3711,12 @@ encodeGatewayCommand gatewayCommand =
                                 ]
                           )
                         , ( "intents"
-                          , Bitwise.shiftLeftBy 1 1
-                                |> Bitwise.or (Bitwise.shiftLeftBy 2 1)
-                                |> Bitwise.or (Bitwise.shiftLeftBy 9 1)
-                                |> Bitwise.or (Bitwise.shiftLeftBy 12 1)
-                                |> JE.int
+                          , encodeIntents intents
+                            --, Bitwise.shiftLeftBy 1 1
+                            --      |> Bitwise.or (Bitwise.shiftLeftBy 2 1)
+                            --      |> Bitwise.or (Bitwise.shiftLeftBy 9 1)
+                            --      |> Bitwise.or (Bitwise.shiftLeftBy 12 1)
+                            --      |> JE.int
                           )
                         ]
                   )
@@ -3282,9 +3765,15 @@ type OutMsg connection
     | OpenHandle
     | SendWebsocketData connection String
     | SendWebsocketDataWithDelay connection Duration String
-    | UserCreatedMessage (Id GuildId) Message
+    | UserCreatedMessage ChannelType Message
     | UserDeletedMessage (Id GuildId) (Id ChannelId) (Id MessageId)
-    | UserEditedMessage (Id GuildId) (Id ChannelId) (Id MessageId)
+    | UserEditedMessage MessageUpdate
+    | FailedToParseWebsocketMessage JD.Error
+    | ThreadCreatedOrUserAddedToThread Channel
+    | UserAddedReaction ReactionAdd
+    | UserRemovedReaction ReactionRemove
+    | AllReactionsRemoved ReactionRemoveAll
+    | ReactionsRemoveForEmoji ReactionRemoveEmoji
 
 
 type alias Model connection =
@@ -3309,7 +3798,7 @@ type Msg
 
 websocketGatewayUrl : String
 websocketGatewayUrl =
-    "wss://gateway.discord.gg/?v=8&encoding=json"
+    "wss://gateway.discord.gg/?v=9&encoding=json"
 
 
 createdHandle : connection -> Model connection -> Model connection
@@ -3327,19 +3816,23 @@ subscription listen model =
             Nothing
 
 
-update : Authentication -> Msg -> Model connection -> ( Model connection, List (OutMsg connection) )
-update authToken msg model =
+update : Authentication -> Intents -> Msg -> Model connection -> ( Model connection, List (OutMsg connection) )
+update authToken intents msg model =
     case msg of
         GotWebsocketData data ->
-            handleGateway authToken data model
+            handleGateway authToken intents data model
 
         WebsocketClosed ->
+            let
+                _ =
+                    Debug.log "WebsocketClosed" ()
+            in
             ( { model | websocketHandle = Nothing }, [ OpenHandle ] )
 
 
-handleGateway : Authentication -> String -> Model connection -> ( Model connection, List (OutMsg connection) )
-handleGateway authToken response model =
-    case ( model.websocketHandle, JD.decodeString decodeGatewayEvent response ) of
+handleGateway : Authentication -> Intents -> String -> Model connection -> ( Model connection, List (OutMsg connection) )
+handleGateway authToken intents response model =
+    case ( model.websocketHandle, JD.decodeString decodeGatewayEvent response |> Debug.log "event" ) of
         ( Just connection, Ok data ) ->
             let
                 heartbeat : String
@@ -3356,7 +3849,7 @@ handleGateway authToken response model =
                                     OpResume authToken discordSessionId sequenceCounter
 
                                 Nothing ->
-                                    OpIdentify authToken
+                                    OpIdentify authToken intents
                             )
                                 |> encodeGatewayCommand
                                 |> JE.encode 0
@@ -3384,16 +3877,11 @@ handleGateway authToken response model =
                         ResumedEvent ->
                             ( model, [] )
 
-                        MessageCreateEvent message ->
-                            case message.guildId of
-                                Included guildId ->
-                                    ( model, [ UserCreatedMessage guildId message ] )
-
-                                Missing ->
-                                    ( model, [] )
+                        MessageCreateEvent channelType message ->
+                            ( model, [ UserCreatedMessage channelType message ] )
 
                         MessageUpdateEvent messageUpdate ->
-                            ( model, [] )
+                            ( model, [ UserEditedMessage messageUpdate ] )
 
                         MessageDeleteEvent messageId channelId maybeGuildId ->
                             case maybeGuildId of
@@ -3432,14 +3920,29 @@ handleGateway authToken response model =
                         GuildMemberUpdateEvent _ ->
                             ( model, [] )
 
+                        ThreadCreatedOrUserAddedToThreadEvent channel ->
+                            ( model, [ ThreadCreatedOrUserAddedToThread channel ] )
+
+                        MessageReactionAdd reactionAdd ->
+                            ( model, [ UserAddedReaction reactionAdd ] )
+
+                        MessageReactionRemove reactionRemove ->
+                            ( model, [ UserRemovedReaction reactionRemove ] )
+
+                        MessageReactionRemoveAll reactionRemoveAll ->
+                            ( model, [ AllReactionsRemoved reactionRemoveAll ] )
+
+                        MessageReactionRemoveEmoji reactionRemoveEmoji ->
+                            ( model, [ ReactionsRemoveForEmoji reactionRemoveEmoji ] )
+
                 OpReconnect ->
                     ( model, [ CloseAndReopenHandle connection ] )
 
                 OpInvalidSession ->
                     ( { model | gatewayState = Nothing }, [ CloseAndReopenHandle connection ] )
 
-        ( _, Err _ ) ->
-            ( model, [] )
+        ( _, Err error ) ->
+            ( model, [ FailedToParseWebsocketMessage error ] )
 
         ( Nothing, Ok _ ) ->
             ( model, [] )
